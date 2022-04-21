@@ -441,7 +441,7 @@ impl TransactionBuilderConfigBuilder {
             prefer_split_change: cfg.prefer_split_change,
             collateral_amount: cfg.collateral_amount,
             min_split_amount_ada: cfg.min_split_amount_ada,
-            native_asset_chunk_size: cfg.native_asset_chunk_size,
+            native_asset_chunk_size: cfg.native_asset_chunk_size.unwrap_or(0),
         })
     }
 }
@@ -1912,6 +1912,8 @@ impl TransactionBuilder {
                             .checked_add(&minimum_utxo_val)?
                             .checked_add(&fee_for_outputs)?,
                     ) > 0;
+
+                    /* prefer split change option */
                     if self.config.prefer_split_change && above_collateral_minimum {
                         // Create collateral output and subtract from change left
                         change_left =
@@ -1954,7 +1956,7 @@ impl TransactionBuilder {
                             change_left = change_left.checked_sub(&change_left)?;
                             let leftover_output = TransactionOutput {
                                 address: address.clone(),
-                                amount: change_left,
+                                amount: change_left.clone(),
                                 datum: datum.clone(),
                                 script_ref: script_ref.clone(),
                             };
@@ -1962,7 +1964,9 @@ impl TransactionBuilder {
                             let fee_for_change = self.fee_for_output(&leftover_output)?;
                             new_fee = new_fee.checked_add(&fee_for_change)?;
                         }
-                    } else if self.config.prefer_pure_change && left_above_minimum {
+                    }
+                    /* prefer pure change option */
+                    else if self.config.prefer_pure_change && left_above_minimum {
                         let pure_output = TransactionOutput {
                             address: address.clone(),
                             amount: change_left.clone(),
