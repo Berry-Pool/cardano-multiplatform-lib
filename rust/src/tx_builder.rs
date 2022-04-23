@@ -2,8 +2,8 @@ use super::fees;
 use super::output_builder::TransactionOutputAmountBuilder;
 use super::utils;
 use super::*;
-use crate::tx_builder_utils::*;
-use std::collections::{BTreeMap, BTreeSet};
+use crate::{tx_builder_utils::*, witness_builder::RedeemerWitnessKey};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 // comes from witsVKeyNeeded in the Ledger spec
 fn witness_keys_for_cert(
@@ -194,7 +194,7 @@ fn fake_full_tx(
         native_scripts: tx_builder.native_scripts.clone(),
         bootstraps: bootstrap_keys,
         plutus_scripts: tx_builder.plutus_scripts.clone(),
-        plutus_data: tx_builder.plutus_data.clone(),
+        plutus_data: tx_builder.collect_plutus_data(),
         redeemers: tx_builder.redeemers.clone(),
     };
     Ok(Transaction {
@@ -467,7 +467,7 @@ pub struct TransactionBuilder {
     required_signers: Option<RequiredSigners>,
     network_id: Option<NetworkId>,
     plutus_scripts: Option<PlutusScripts>,
-    plutus_data: Option<PlutusList>,
+    plutus_data: Option<BTreeMap<DataHash, PlutusData>>,
     redeemers: Option<Redeemers>,
     //Babbage
     collateral_return: Option<TransactionOutput>,
@@ -510,6 +510,17 @@ impl TransactionBuilder {
             .get_explicit_output()?
             .checked_add(&Value::new(&self.get_deposit()?))?
             .checked_add(&Value::new(&self.min_fee()?))?;
+
+        let change_total = input_total
+            .checked_sub(&output_total)
+            .unwrap_or(Value::zero());
+        if !change_total.is_zero() {
+            let min_ada = min_ada_required(&change_total, false, &self.config.coins_per_utxo_word)?;
+            if min_ada.gt(&change_total.coin) {
+                output_total = output_total.checked_add(&Value::new(&min_ada))?;
+            }
+        }
+
         match strategy {
             CoinSelectionStrategyCIP2::LargestFirst => {
                 if self
@@ -1078,11 +1089,10 @@ impl TransactionBuilder {
     /// Add plutus data via a PlutusData object
     pub fn add_plutus_data(&mut self, plutus_data: &PlutusData) {
         if self.plutus_data.is_none() {
-            let data = PlutusList::new();
-            self.plutus_data = Some(data);
+            self.plutus_data = Some(BTreeMap::new());
         }
         let mut data = self.plutus_data.clone().unwrap();
-        data.add(plutus_data);
+        data.insert(hash_plutus_data(&plutus_data), plutus_data.clone());
         self.plutus_data = Some(data);
     }
 
@@ -2091,7 +2101,7 @@ impl TransactionBuilder {
                 true => Some(utils::hash_script_data(
                     &self.redeemers.clone().unwrap_or(Redeemers::new()),
                     &self.config.costmdls,
-                    self.plutus_data.clone(),
+                    self.collect_plutus_data(),
                 )),
             },
             collateral: self.collateral.clone(),
@@ -2145,8 +2155,19 @@ impl TransactionBuilder {
         }
     }
 
+    fn collect_plutus_data(&self) -> Option<PlutusList> {
+        match &self.plutus_data {
+            Some(plutus_data) => Some(PlutusList {
+                elems: plutus_data.values().cloned().collect(),
+                definite_encoding: None,
+            })
+            .clone(),
+            None => None,
+        }
+    }
+
     fn collect_redeemers(&self) -> Option<Redeemers> {
-        let mut collected_redeemers = Redeemers::new();
+        let mut collected_redeemers = BTreeMap::new();
 
         let lexical_order_inputs = self.get_lexical_order_inputs();
         for input in &self.inputs {
@@ -2163,7 +2184,10 @@ impl TransactionBuilder {
                     &redeemer.data(),
                     &redeemer.ex_units(),
                 );
-                collected_redeemers.add(&new_redeemer);
+                collected_redeemers.insert(
+                    RedeemerWitnessKey::new(&new_redeemer.tag(), &new_redeemer.index()),
+                    new_redeemer.clone(),
+                );
             }
         }
 
@@ -2182,7 +2206,10 @@ impl TransactionBuilder {
                     &redeemer.data(),
                     &redeemer.ex_units(),
                 );
-                collected_redeemers.add(&new_redeemer);
+                collected_redeemers.insert(
+                    RedeemerWitnessKey::new(&new_redeemer.tag(), &new_redeemer.index()),
+                    new_redeemer,
+                );
             }
         }
 
@@ -2201,7 +2228,10 @@ impl TransactionBuilder {
                     &redeemer.data(),
                     &redeemer.ex_units(),
                 );
-                collected_redeemers.add(&new_redeemer);
+                collected_redeemers.insert(
+                    RedeemerWitnessKey::new(&new_redeemer.tag(), &new_redeemer.index()),
+                    new_redeemer,
+                );
             }
         }
 
@@ -2220,14 +2250,18 @@ impl TransactionBuilder {
                     &redeemer.data(),
                     &redeemer.ex_units(),
                 );
-                collected_redeemers.add(&new_redeemer);
+                collected_redeemers.insert(
+                    RedeemerWitnessKey::new(&new_redeemer.tag(), &new_redeemer.index()),
+                    new_redeemer,
+                );
             }
         }
 
         if collected_redeemers.len() > 0 {
-            return Some(collected_redeemers);
+            Some(Redeemers(collected_redeemers.values().cloned().collect()))
+        } else {
+            None
         }
-        None
     }
 
     /// Returns full Transaction object with the body and the auxiliary data
@@ -2351,8 +2385,8 @@ impl TransactionBuilder {
         if let Some(scripts) = self.plutus_scripts.as_ref() {
             wit.set_plutus_scripts(scripts);
         }
-        if let Some(data) = self.plutus_data.as_ref() {
-            wit.set_plutus_data(data);
+        if let Some(_) = self.plutus_data.as_ref() {
+            wit.set_plutus_data(&self.collect_plutus_data().unwrap());
         }
         if let Some(redeemers) = self.redeemers.as_ref() {
             wit.set_redeemers(redeemers);
