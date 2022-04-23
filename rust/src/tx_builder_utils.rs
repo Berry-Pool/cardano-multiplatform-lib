@@ -1,7 +1,8 @@
 use super::*;
 
+use crate::witness_builder::RedeemerWitnessKey;
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
 use js_sys::*;
@@ -117,7 +118,7 @@ pub async fn get_ex_units(tx: Transaction, bf: &Blockfrost) -> Result<Redeemers,
                     &serde_json::to_string_pretty(&e).unwrap(),
                 ));
             }
-            let mut redeemers = Redeemers::new();
+            let mut redeemers: BTreeMap<RedeemerWitnessKey, Redeemer> = BTreeMap::new();
             for (pointer, eu) in &res.EvaluationResult.unwrap() {
                 let r: Vec<&str> = pointer.split(":").collect();
                 let tag = match r[0] {
@@ -138,12 +139,18 @@ pub async fn get_ex_units(tx: Transaction, bf: &Blockfrost) -> Result<Redeemers,
                             &tx_redeemer.data(),
                             &ex_units,
                         );
-                        redeemers.add(&updated_redeemer);
+                        redeemers.insert(
+                            RedeemerWitnessKey::new(
+                                &updated_redeemer.tag(),
+                                &updated_redeemer.index(),
+                            ),
+                            updated_redeemer.clone(),
+                        );
                     }
                 }
             }
 
-            Ok(redeemers)
+            Ok(Redeemers(redeemers.values().cloned().collect()))
         }
 
         None => Err(JsValue::NULL),
