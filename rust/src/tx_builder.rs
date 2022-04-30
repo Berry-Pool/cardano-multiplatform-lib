@@ -595,12 +595,12 @@ impl TransactionBuilder {
         /*
             The score function evalues each move in the improvement phase by penalizing bad actions:
             1. We try to get to an ideal ada amount (twice the target amount) => The further away the more penalized
-            2. We try to get an ideal amount for all assets. We take the euclidean distance of two normalized vector,
+            2. We try to get an ideal amount for all assets. We take the euclidean distance of two normalized vectors,
                 where the dimensions represent the amount of assets and the coordinate the quantity of a specific asset.
                 The closer the distance is to 0 the less penalized.
             3. We try to avoid assets in inputs if possible by penalizing each extra asset that was added.
-
-            Whenever we interact with a plutus script, we increase the weights on avoiding assets, since assets are costy in plutus scripts.
+            4. If the quantity for any asset (inculding ada) is less than the target quantity, apply a very big negative weight so that this move is definitely discarded.
+            5. Whenever we interact with a plutus script, we increase the weights on avoiding assets, since assets are costy in plutus scripts.
 
         */
         let score = |inputs: &Vec<TransactionUnspentOutput>,
