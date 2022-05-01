@@ -1563,7 +1563,7 @@ impl Deserialize for CostModel {
                 }
                 arr.push(Int::deserialize(raw)?);
             }
-            if arr.len() != OP_COUNT_V1 || arr.len() != OP_COUNT_V2 {
+            if arr.len() != OP_COUNT_V1 && arr.len() != OP_COUNT_V2 {
                 return Err(DeserializeFailure::OutOfRange {
                     min: OP_COUNT_V1,
                     max: OP_COUNT_V1,
