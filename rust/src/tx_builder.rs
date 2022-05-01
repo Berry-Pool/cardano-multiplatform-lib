@@ -608,14 +608,13 @@ impl TransactionBuilder {
                      total: &Value,
                      is_plutus: bool|
          -> f64 {
-            let tota_coin_pure = pure_ada(&total);
             /*
                If the target coin is less than 2.5 ADA we try to add more than twice the amount in order to cover the max fees in worst case
             */
-            let ideal = if total.coin > to_bignum(3000000) {
-                from_bignum(&tota_coin_pure) * 2
+            let ideal = if target.coin > to_bignum(2500000) {
+                from_bignum(&target.coin) * 2
             } else {
-                from_bignum(&tota_coin_pure) * 4
+                from_bignum(&target.coin) * 4
             };
 
             let input_value = inputs.iter().fold(Value::zero(), |acc, utxo| {
@@ -650,16 +649,17 @@ impl TransactionBuilder {
                 (from_bignum(&pure_ada(&input_value)) as f64 - ideal as f64) / ideal as f64;
 
             let weight_ideal = if current_ideal > 0.0 {
-                current_ideal * -50.0
+                current_ideal * -100.0
             } else {
-                current_ideal * 200.0
+                -current_ideal * -1000.0
             };
 
-            let asset_len = input_assets.len();
+            /* Normalize the asset length through the max possibly asset length (that's an estimate) */
+            let asset_len = input_assets.len() as f64 / 600.0;
 
             let weight_assets = if is_plutus {
                 /* Assets are expensive for Plutus scripts => penalize harder if more assets are in inputs */
-                asset_len as f64 * -5.0
+                asset_len * -2000.0
             } else {
                 /* Penalize more assets a bit, but try to find the ideal quantity in order to avoid asset fractions over time */
                 let norm_current = norm_vector(&current_vector);
@@ -667,7 +667,7 @@ impl TransactionBuilder {
 
                 let distance = distance_vectors(&norm_current, &norm_ideal);
 
-                asset_len as f64 * -3.0 + distance * -60.0
+                asset_len * -1000.0 + distance * -1000.0
             };
 
             weight_ideal + weight_assets
@@ -725,7 +725,9 @@ impl TransactionBuilder {
 
         /* Add enough ADA to inputs */
         let mut relevant_inputs = inputs.clone();
-        while pure_ada(&input_total.checked_add(&current_value)?) < pure_ada(&output_total) {
+        while pure_ada(&current_value) < pure_ada(&output_target)
+            || input_total.checked_add(&current_value)?.coin < output_total.coin
+        {
             if relevant_inputs.len() <= 0 {
                 return Err(JsError::from_str("InputsExhaustedError"));
             }
@@ -758,48 +760,90 @@ impl TransactionBuilder {
                 break;
             }
 
-            let mut current_inputs_check = current_inputs.clone();
-            let index = rand::thread_rng().gen_range(0..relevant_inputs.len());
-            let index2 = rand::thread_rng().gen_range(0..current_inputs_check.len());
+            /*
+                0 = Replace
+                1 = Append
+                2 = Delete
+            */
+            for action in 0..=2 {
+                if action == 0 {
+                    let mut current_inputs_check = current_inputs.clone();
+                    let index = rand::thread_rng().gen_range(0..relevant_inputs.len());
+                    let index2 = rand::thread_rng().gen_range(0..current_inputs_check.len());
 
-            let utxo = relevant_inputs[index].clone();
-            current_inputs_check[index2] = utxo.clone();
+                    let utxo = relevant_inputs[index].clone();
+                    current_inputs_check[index2] = utxo.clone();
 
-            /* Checks if replacement utxo is better than current one at this position */
-            if score(
-                &current_inputs_check,
-                &output_target,
-                &output_total,
-                is_plutus,
-            ) > score(&current_inputs, &output_target, &output_total, is_plutus)
-            {
-                let old_utxo = current_inputs[index2].clone();
-                current_value.clamped_sub(&old_utxo.output.amount);
-                current_value.checked_add(&utxo.output.amount).unwrap();
-                current_inputs = current_inputs_check;
-                relevant_inputs[index] = old_utxo.clone();
-            } else {
-                current_inputs_check = current_inputs.clone();
-                current_inputs_check.push(utxo.clone());
+                    /* Checks if replacement utxo is better than current one at this position */
+                    if score(
+                        &current_inputs_check,
+                        &output_target,
+                        &output_total,
+                        is_plutus,
+                    ) > score(&current_inputs, &output_target, &output_total, is_plutus)
+                    {
+                        let old_utxo = current_inputs[index2].clone();
+                        current_value.clamped_sub(&old_utxo.output.amount);
+                        current_value.checked_add(&utxo.output.amount).unwrap();
+                        current_inputs = current_inputs_check;
+                        relevant_inputs[index] = old_utxo.clone();
 
-                /* Checks if appending a utxo improves coin selection */
-                if score(
-                    &current_inputs_check,
-                    &output_target,
-                    &output_total,
-                    is_plutus,
-                ) > score(&current_inputs, &output_target, &output_total, is_plutus)
-                {
-                    current_value.checked_add(&utxo.output.amount).unwrap();
-                    current_inputs = current_inputs_check;
+                        break;
+                    }
+                } else if action == 1 {
+                    let mut current_inputs_check = current_inputs.clone();
+                    let index = rand::thread_rng().gen_range(0..relevant_inputs.len());
+                    let utxo = relevant_inputs[index].clone();
+                    current_inputs_check.push(utxo.clone());
 
-                    relevant_inputs.swap_remove(index);
+                    /* Checks if appending a utxo improves coin selection */
+                    if score(
+                        &current_inputs_check,
+                        &output_target,
+                        &output_total,
+                        is_plutus,
+                    ) > score(&current_inputs, &output_target, &output_total, is_plutus)
+                    {
+                        current_value.checked_add(&utxo.output.amount).unwrap();
+                        current_inputs = current_inputs_check;
 
-                    output_total = output_total.checked_add(&Value::new(&self.fee_for_input(
-                        &utxo.output.address,
-                        &utxo.input,
-                        &utxo.output.amount,
-                    )?))?;
+                        relevant_inputs.swap_remove(index);
+
+                        output_total =
+                            output_total.checked_add(&Value::new(&self.fee_for_input(
+                                &utxo.output.address,
+                                &utxo.input,
+                                &utxo.output.amount,
+                            )?))?;
+
+                        break;
+                    }
+                } else {
+                    let mut current_inputs_check = current_inputs.clone();
+                    let index = rand::thread_rng().gen_range(0..current_inputs_check.len());
+                    let utxo = current_inputs_check[index].clone();
+                    current_inputs_check.swap_remove(index);
+
+                    /* Checks if deleting a utxo is better than current input set */
+                    if score(
+                        &current_inputs_check,
+                        &output_target,
+                        &output_total,
+                        is_plutus,
+                    ) > score(&current_inputs, &output_target, &output_total, is_plutus)
+                    {
+                        current_value.checked_sub(&utxo.output.amount).unwrap();
+                        current_inputs = current_inputs_check;
+
+                        output_total =
+                            output_total.checked_sub(&Value::new(&self.fee_for_input(
+                                &utxo.output.address,
+                                &utxo.input,
+                                &utxo.output.amount,
+                            )?))?;
+
+                        break;
+                    }
                 }
             }
         }
@@ -2628,9 +2672,21 @@ mod tests {
         }
         ma.insert(policy_id, &a);
 
+        let mut ma2 = MultiAsset::new();
+        let mut a2 = Assets::new();
+
+        for i in 0..=2 {
+            let name = AssetName::new(vec![0u8, 1, 2, i]).unwrap();
+            a2.insert(&name, &to_bignum(70));
+        }
+        ma2.insert(policy_id, &a2);
+
+        let mut i_v = Value::new(&to_bignum(1500000));
+        i_v.set_multiasset(&ma2);
+
         let mut tx_builder = create_reallistic_tx_builder();
 
-        let mut input_value = Value::new(&to_bignum(12_000_000));
+        let mut input_value = Value::new(&to_bignum(20_000_000));
         input_value.set_multiasset(&ma);
 
         let mut utxos = TransactionUnspentOutputs::new();
@@ -2639,25 +2695,39 @@ mod tests {
             &TransactionOutput::new(&addr_net_0, &input_value),
         ));
 
-        utxos.add(&TransactionUnspentOutput::new(
-            &TransactionInput::new(&genesis_id(), &1.into()),
-            &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(3_000_000))),
-        ));
+        // utxos.add(&TransactionUnspentOutput::new(
+        //     &TransactionInput::new(&genesis_id(), &1.into()),
+        //     &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(10_000_000))),
+        // ));
 
         utxos.add(&TransactionUnspentOutput::new(
             &TransactionInput::new(&genesis_id(), &2.into()),
-            &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(1_000_000))),
+            &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(4_000_000))),
         ));
 
-        utxos.add(&TransactionUnspentOutput::new(
-            &TransactionInput::new(&genesis_id(), &3.into()),
-            &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(8_000_000))),
-        ));
+        // utxos.add(&TransactionUnspentOutput::new(
+        //     &TransactionInput::new(&genesis_id(), &3.into()),
+        //     &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(4_000_000))),
+        // ));
+        // utxos.add(&TransactionUnspentOutput::new(
+        //     &TransactionInput::new(&genesis_id(), &3.into()),
+        //     &TransactionOutput::new(&addr_net_0, &i_v),
+        // ));
 
-        utxos.add(&TransactionUnspentOutput::new(
-            &TransactionInput::new(&genesis_id(), &4.into()),
-            &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(2_000_000))),
-        ));
+        // utxos.add(&TransactionUnspentOutput::new(
+        //     &TransactionInput::new(&genesis_id(), &2.into()),
+        //     &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(1_000_000))),
+        // ));
+
+        // utxos.add(&TransactionUnspentOutput::new(
+        //     &TransactionInput::new(&genesis_id(), &3.into()),
+        //     &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(8_000_000))),
+        // ));
+
+        // utxos.add(&TransactionUnspentOutput::new(
+        //     &TransactionInput::new(&genesis_id(), &4.into()),
+        //     &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(2_000_000))),
+        // ));
 
         let mut target_ma = MultiAsset::new();
         let mut target_a = Assets::new();
@@ -2673,14 +2743,16 @@ mod tests {
 
         // tx_builder.add_mint(&policy_id, &mint, None);
 
+        // i_v.coin = to_bignum(0);
+
         // tx_builder
-        //     .add_output(&TransactionOutput::new(&addr_net_0, &target))
+        //     .add_output(&TransactionOutput::new(&addr_net_0, &i_v))
         //     .unwrap();
 
         tx_builder
             .add_output(&TransactionOutput::new(
                 &addr_net_0,
-                &Value::new(&to_bignum(1000000)),
+                &Value::new(&to_bignum(4000000)),
             ))
             .unwrap();
 
