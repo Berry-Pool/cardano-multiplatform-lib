@@ -169,8 +169,6 @@ impl ConstrPlutusData {
     }
 }
 
-const COST_MODEL_OP_COUNT: usize = 166;
-
 #[wasm_bindgen]
 #[derive(
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
@@ -179,21 +177,33 @@ pub struct CostModel(Vec<Int>);
 
 to_from_bytes!(CostModel);
 
+const OP_COUNT_V1: usize = 166;
+const OP_COUNT_V2: usize = 170;
+
 #[wasm_bindgen]
 impl CostModel {
     pub fn new() -> Self {
-        let mut costs = Vec::with_capacity(COST_MODEL_OP_COUNT);
-        for _ in 0..COST_MODEL_OP_COUNT {
+        let mut costs = Vec::with_capacity(OP_COUNT_V1);
+        for _ in 0..OP_COUNT_V1 {
+            costs.push(Int::new_i32(0));
+        }
+        Self(costs)
+    }
+
+    pub fn new_plutus_v2() -> Self {
+        let mut costs = Vec::with_capacity(OP_COUNT_V2);
+        for _ in 0..OP_COUNT_V2 {
             costs.push(Int::new_i32(0));
         }
         Self(costs)
     }
 
     pub fn set(&mut self, operation: usize, cost: &Int) -> Result<Int, JsError> {
-        if operation >= COST_MODEL_OP_COUNT {
+        if operation >= self.len() {
             return Err(JsError::from_str(&format!(
                 "CostModel operation {} out of bounds. Max is {}",
-                operation, COST_MODEL_OP_COUNT
+                operation,
+                self.len()
             )));
         }
         let old = self.0[operation].clone();
@@ -202,13 +212,18 @@ impl CostModel {
     }
 
     pub fn get(&self, operation: usize) -> Result<Int, JsError> {
-        if operation >= COST_MODEL_OP_COUNT {
+        if operation >= self.len() {
             return Err(JsError::from_str(&format!(
                 "CostModel operation {} out of bounds. Max is {}",
-                operation, COST_MODEL_OP_COUNT
+                operation,
+                self.len()
             )));
         }
         Ok(self.0[operation].clone())
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
     }
 }
 
@@ -943,7 +958,6 @@ impl ScriptRef {
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
 pub enum DatumEnum {
-    Empty,
     Hash(DataHash),
     Data(Data),
 }
@@ -951,7 +965,6 @@ pub enum DatumEnum {
 #[wasm_bindgen]
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
 pub enum DatumKind {
-    Empty,
     Hash,
     Data,
 }
@@ -977,7 +990,6 @@ impl Datum {
         match &self.0 {
             DatumEnum::Hash(_) => DatumKind::Hash,
             DatumEnum::Data(_) => DatumKind::Data,
-            DatumEnum::Empty => DatumKind::Empty,
         }
     }
 
@@ -1253,19 +1265,14 @@ impl cbor_event::se::Serialize for Datum {
         &self,
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
-        serializer.write_array(cbor_event::Len::Len(if self.kind() == DatumKind::Empty {
-            1
-        } else {
-            2
-        }))?;
+        serializer.write_array(cbor_event::Len::Len(2))?;
         match &self.0 {
-            DatumEnum::Empty => serializer.write_unsigned_integer(0u64),
             DatumEnum::Hash(data_hash) => {
-                serializer.write_unsigned_integer(1u64)?;
+                serializer.write_unsigned_integer(0u64)?;
                 data_hash.serialize(serializer)
             }
             DatumEnum::Data(data) => {
-                serializer.write_unsigned_integer(2u64)?;
+                serializer.write_unsigned_integer(1u64)?;
                 data.serialize(serializer)
             }
         }
@@ -1287,9 +1294,8 @@ impl Deserialize for Datum {
                 }
             }
             let datum_enum = match raw.unsigned_integer()? {
-                0 => DatumEnum::Empty,
-                1 => DatumEnum::Hash(DataHash::deserialize(raw)?),
-                2 => DatumEnum::Data(Data::deserialize(raw)?),
+                0 => DatumEnum::Hash(DataHash::deserialize(raw)?),
+                1 => DatumEnum::Data(Data::deserialize(raw)?),
                 n => {
                     return Err(DeserializeFailure::FixedValueMismatch {
                         found: Key::Uint(n),
@@ -1534,7 +1540,7 @@ impl cbor_event::se::Serialize for CostModel {
         &self,
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
-        serializer.write_array(cbor_event::Len::Len(COST_MODEL_OP_COUNT as u64))?;
+        serializer.write_array(cbor_event::Len::Len(self.0.len() as u64))?;
         for cost in &self.0 {
             cost.serialize(serializer)?;
         }
@@ -1557,10 +1563,10 @@ impl Deserialize for CostModel {
                 }
                 arr.push(Int::deserialize(raw)?);
             }
-            if arr.len() != COST_MODEL_OP_COUNT {
+            if arr.len() != OP_COUNT_V1 || arr.len() != OP_COUNT_V2 {
                 return Err(DeserializeFailure::OutOfRange {
-                    min: COST_MODEL_OP_COUNT,
-                    max: COST_MODEL_OP_COUNT,
+                    min: OP_COUNT_V1,
+                    max: OP_COUNT_V1,
                     found: arr.len(),
                 }
                 .into());
