@@ -593,7 +593,7 @@ impl TransactionBuilder {
         };
 
         /*
-            The score function evalues each move in the improvement phase by penalizing bad actions:
+            The cost function evalues each move in the improvement phase by penalizing bad actions:
             1. We try to get to an ideal ada amount (twice the target amount) => The further away the more penalized
             2. We try to get an ideal amount for all assets. We take the euclidean distance of two normalized vectors,
                 where the dimensions represent the amount of assets and the coordinate the quantity of a specific asset.
@@ -603,10 +603,10 @@ impl TransactionBuilder {
             5. Whenever we interact with a plutus script, we increase the weights on avoiding assets, since assets are costy in plutus scripts.
 
         */
-        let score = |inputs: &Vec<TransactionUnspentOutput>,
-                     target: &Value,
-                     total: &Value,
-                     is_plutus: bool|
+        let cost = |inputs: &Vec<TransactionUnspentOutput>,
+                    target: &Value,
+                    total: &Value,
+                    is_plutus: bool|
          -> f64 {
             /*
                If the target coin is less than 2.5 ADA we try to add more than twice the amount in order to cover the max fees in worst case
@@ -632,7 +632,7 @@ impl TransactionBuilder {
                 let current_asset_quantity = get_asset(&input_value, (&asset.0, &asset.1));
 
                 if current_asset_quantity < asset.2 {
-                    return -100000.0;
+                    return 100000.0;
                 }
 
                 current_vector.push(from_bignum(&current_asset_quantity));
@@ -642,16 +642,16 @@ impl TransactionBuilder {
             let temp_total_input_coin = input_value.coin.checked_add(&input_total.coin).unwrap();
 
             if temp_total_input_coin < total.coin {
-                return -1000000.0;
+                return 1000000.0;
             }
 
             let current_ideal =
                 (from_bignum(&pure_ada(&input_value)) as f64 - ideal as f64) / ideal as f64;
 
             let weight_ideal = if current_ideal > 0.0 {
-                current_ideal * -100.0
+                current_ideal * 100.0
             } else {
-                -current_ideal * -1000.0
+                -current_ideal * 1000.0
             };
 
             /* Normalize the asset length through the max possibly asset length (that's an estimate) */
@@ -659,7 +659,7 @@ impl TransactionBuilder {
 
             let weight_assets = if is_plutus {
                 /* Assets are expensive for Plutus scripts => penalize harder if more assets are in inputs */
-                asset_len * -2000.0
+                asset_len * 2000.0
             } else {
                 /* Penalize more assets a bit, but try to find the ideal quantity in order to avoid asset fractions over time */
                 let norm_current = norm_vector(&current_vector);
@@ -667,7 +667,7 @@ impl TransactionBuilder {
 
                 let distance = distance_vectors(&norm_current, &norm_ideal);
 
-                asset_len * -1000.0 + distance * -1000.0
+                asset_len * 1000.0 + distance * 1000.0
             };
 
             weight_ideal + weight_assets
@@ -775,12 +775,12 @@ impl TransactionBuilder {
                     current_inputs_check[index2] = utxo.clone();
 
                     /* Checks if replacement utxo is better than current one at this position */
-                    if score(
+                    if cost(
                         &current_inputs_check,
                         &output_target,
                         &output_total,
                         is_plutus,
-                    ) > score(&current_inputs, &output_target, &output_total, is_plutus)
+                    ) < cost(&current_inputs, &output_target, &output_total, is_plutus)
                     {
                         let old_utxo = current_inputs[index2].clone();
                         current_value.clamped_sub(&old_utxo.output.amount);
@@ -797,12 +797,12 @@ impl TransactionBuilder {
                     current_inputs_check.push(utxo.clone());
 
                     /* Checks if appending a utxo improves coin selection */
-                    if score(
+                    if cost(
                         &current_inputs_check,
                         &output_target,
                         &output_total,
                         is_plutus,
-                    ) > score(&current_inputs, &output_target, &output_total, is_plutus)
+                    ) < cost(&current_inputs, &output_target, &output_total, is_plutus)
                     {
                         current_value.checked_add(&utxo.output.amount).unwrap();
                         current_inputs = current_inputs_check;
@@ -825,12 +825,12 @@ impl TransactionBuilder {
                     current_inputs_check.swap_remove(index);
 
                     /* Checks if deleting a utxo is better than current input set */
-                    if score(
+                    if cost(
                         &current_inputs_check,
                         &output_target,
                         &output_total,
                         is_plutus,
-                    ) > score(&current_inputs, &output_target, &output_total, is_plutus)
+                    ) < cost(&current_inputs, &output_target, &output_total, is_plutus)
                     {
                         current_value.checked_sub(&utxo.output.amount).unwrap();
                         current_inputs = current_inputs_check;
