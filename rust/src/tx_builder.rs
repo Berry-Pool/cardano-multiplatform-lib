@@ -486,7 +486,7 @@ impl TransactionBuilder {
         let coins_per_utxo_word = self.config.coins_per_utxo_word.clone();
 
         let (mint_value, burn_value) = self.get_mint_as_values();
-        /* We do not want to remove burn assets here, because we need to find inputs which have the burn assets. So we make it part of the coin selection */
+        /* We do not want to remove burn assets here, because we need to find inputs which have the burn assets. So we make it part of the coin selection and add it to our total output */
         let input_total = self
             .get_explicit_input()?
             .checked_add(&self.get_implicit_input()?)?
@@ -494,7 +494,8 @@ impl TransactionBuilder {
         let mut output_total = self
             .get_explicit_output()?
             .checked_add(&Value::new(&self.get_deposit()?))?
-            .checked_add(&Value::new(&self.min_fee()?))?;
+            .checked_add(&Value::new(&self.min_fee()?))?
+            .checked_add(&burn_value)?;
 
         let change_total = input_total.clamped_sub(&output_total);
         if change_total.multiasset().is_some() {
@@ -525,9 +526,7 @@ impl TransactionBuilder {
         }
 
         /* The remaining amount that needs to be filled with the available inputs */
-        let output_target = output_total
-            .checked_add(&burn_value)?
-            .clamped_sub(&input_total);
+        let output_target = output_total.clamped_sub(&input_total);
         if output_target.is_zero() {
             return Ok(());
         }
