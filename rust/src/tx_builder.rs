@@ -484,7 +484,13 @@ impl TransactionBuilder {
     /// inputs to cover the minimum fees. This does not, however, set the txbuilder's fee.
     pub fn add_inputs_from(&mut self, inputs: &TransactionUnspentOutputs) -> Result<(), JsError> {
         let coins_per_utxo_word = self.config.coins_per_utxo_word.clone();
-        let input_total = self.get_total_input()?;
+
+        let (mint_value, burn_value) = self.get_mint_as_values();
+        /* We do not want to remove burn assets here, because we need to find inputs which have the burn assets. So we make it part of the coin selection */
+        let input_total = self
+            .get_explicit_input()?
+            .checked_add(&self.get_implicit_input()?)?
+            .checked_add(&mint_value)?;
         let mut output_total = self
             .get_explicit_output()?
             .checked_add(&Value::new(&self.get_deposit()?))?
@@ -519,7 +525,9 @@ impl TransactionBuilder {
         }
 
         /* The remaining amount that needs to be filled with the available inputs */
-        let output_target = output_total.clamped_sub(&input_total);
+        let output_target = output_total
+            .checked_add(&burn_value)?
+            .clamped_sub(&input_total);
         if output_target.is_zero() {
             return Ok(());
         }
@@ -783,7 +791,7 @@ impl TransactionBuilder {
                     ) < cost(&current_inputs, &output_target, &output_total, is_plutus)
                     {
                         let old_utxo = current_inputs[index2].clone();
-                        current_value.clamped_sub(&old_utxo.output.amount);
+                        current_value.checked_sub(&old_utxo.output.amount).unwrap();
                         current_value.checked_add(&utxo.output.amount).unwrap();
                         current_inputs = current_inputs_check;
                         relevant_inputs[index] = old_utxo.clone();
@@ -2686,7 +2694,7 @@ mod tests {
 
         let mut tx_builder = create_reallistic_tx_builder();
 
-        let mut input_value = Value::new(&to_bignum(20_000_000));
+        let mut input_value = Value::new(&to_bignum(8_000_000));
         input_value.set_multiasset(&ma);
 
         let mut utxos = TransactionUnspentOutputs::new();
@@ -2702,7 +2710,7 @@ mod tests {
 
         utxos.add(&TransactionUnspentOutput::new(
             &TransactionInput::new(&genesis_id(), &2.into()),
-            &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(4_000_000))),
+            &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(1_300_000))),
         ));
 
         // utxos.add(&TransactionUnspentOutput::new(
@@ -2737,11 +2745,11 @@ mod tests {
         let mut target = Value::new(&to_bignum(0));
         target.set_multiasset(&target_ma);
 
-        // let nameM = AssetName::new(vec![0u8, 1, 2, 5]).unwrap();
+        let nameM = AssetName::new(vec![0u8, 1, 2, 5]).unwrap();
 
-        // let mint = MintAssets::new_from_entry(&nameM, Int::new_i32(5));
+        let mint = MintAssets::new_from_entry(&nameM, Int::new_negative(&to_bignum(3)));
 
-        // tx_builder.add_mint(&policy_id, &mint, None);
+        tx_builder.add_mint(&policy_id, &mint, None);
 
         // i_v.coin = to_bignum(0);
 
@@ -2749,12 +2757,12 @@ mod tests {
         //     .add_output(&TransactionOutput::new(&addr_net_0, &i_v))
         //     .unwrap();
 
-        tx_builder
-            .add_output(&TransactionOutput::new(
-                &addr_net_0,
-                &Value::new(&to_bignum(4000000)),
-            ))
-            .unwrap();
+        // tx_builder
+        //     .add_output(&TransactionOutput::new(
+        //         &addr_net_0,
+        //         &Value::new(&to_bignum(4000000)),
+        //     ))
+        //     .unwrap();
 
         tx_builder.add_inputs_from(&utxos).unwrap();
         tx_builder.balance(&addr_net_0).unwrap();
@@ -2905,7 +2913,7 @@ mod tests {
         match g.result {
             Some(res) => {
                 if let Some(e) = &res.EvaluationFailure {
-                    print!("{}", &serde_json::to_string_pretty(&e).unwrap());
+                    println!("{}", &serde_json::to_string_pretty(&e).unwrap());
                 } else {
                     assert!(false);
                     for (pointer, eu) in &res.EvaluationResult.unwrap() {
