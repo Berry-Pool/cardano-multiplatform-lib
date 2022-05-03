@@ -495,8 +495,9 @@ impl TransactionBuilder {
             /* Adding extra min ada to mint value, which is just change right now, but needs to have a minimum amount of ADA when added to an output */
             let min_ada = min_ada_required(&change_total, false, &coins_per_utxo_word)?;
             if min_ada >= change_total.coin {
+                let change_to_add = min_ada.checked_sub(&change_total.coin)?;
                 output_total = output_total
-                    .checked_add(&Value::new(&min_ada.checked_sub(&change_total.coin)?))?
+                    .checked_add(&Value::new(&change_total.coin.checked_add(&change_to_add)?))?;
             }
         }
 
@@ -634,9 +635,11 @@ impl TransactionBuilder {
                 if current_asset_quantity < asset.2 {
                     return 100000.0;
                 }
-
-                current_vector.push(from_bignum(&current_asset_quantity));
-                ideal_vector.push(from_bignum(&asset.2) * 2);
+                /* For performance reasons we only try to get to an ideal amount of assets when it's below a certain threshold */
+                if target_assets.len() < 100 {
+                    current_vector.push(from_bignum(&current_asset_quantity));
+                    ideal_vector.push(from_bignum(&asset.2) * 2);
+                }
             }
 
             let temp_total_input_coin = input_value.coin.checked_add(&input_total.coin).unwrap();
@@ -662,10 +665,10 @@ impl TransactionBuilder {
                 asset_len * 1500.0
             } else {
                 /* Penalize more assets a bit, but try to find the ideal quantity in order to avoid asset fractions over time */
-                let norm_current = norm_vector(&current_vector);
-                let norm_ideal = norm_vector(&ideal_vector);
+                let norm_current_vector = norm_vector(&current_vector);
+                let norm_ideal_vector = norm_vector(&ideal_vector);
 
-                let distance = distance_vectors(&norm_current, &norm_ideal);
+                let distance = distance_vectors(&norm_current_vector, &norm_ideal_vector);
 
                 asset_len * 800.0 + distance * 800.0
             };
@@ -754,6 +757,7 @@ impl TransactionBuilder {
         let iterations = cmp::max(relevant_inputs.len() * current_inputs.len(), 100);
 
         let is_plutus = self.collect_redeemers().is_some();
+        let mut current_cost = cost(&current_inputs, &output_target, &output_total, is_plutus);
 
         for _ in 0..iterations {
             if relevant_inputs.len() <= 0 {
@@ -775,18 +779,19 @@ impl TransactionBuilder {
                     current_inputs_check[index2] = utxo.clone();
 
                     /* Checks if replacement utxo is better than current one at this position */
-                    if cost(
+                    let new_cost = cost(
                         &current_inputs_check,
                         &output_target,
                         &output_total,
                         is_plutus,
-                    ) < cost(&current_inputs, &output_target, &output_total, is_plutus)
-                    {
+                    );
+                    if new_cost < current_cost {
                         let old_utxo = current_inputs[index2].clone();
                         current_value.checked_sub(&old_utxo.output.amount)?;
                         current_value.checked_add(&utxo.output.amount)?;
                         current_inputs = current_inputs_check;
                         relevant_inputs[index] = old_utxo.clone();
+                        current_cost = new_cost;
 
                         break;
                     }
@@ -797,13 +802,13 @@ impl TransactionBuilder {
                     current_inputs_check.push(utxo.clone());
 
                     /* Checks if appending a utxo improves coin selection */
-                    if cost(
+                    let new_cost = cost(
                         &current_inputs_check,
                         &output_target,
                         &output_total,
                         is_plutus,
-                    ) < cost(&current_inputs, &output_target, &output_total, is_plutus)
-                    {
+                    );
+                    if new_cost < current_cost {
                         current_value.checked_add(&utxo.output.amount)?;
                         current_inputs = current_inputs_check;
 
@@ -815,6 +820,7 @@ impl TransactionBuilder {
                                 &utxo.input,
                                 &utxo.output.amount,
                             )?))?;
+                        current_cost = new_cost;
 
                         break;
                     }
@@ -825,13 +831,13 @@ impl TransactionBuilder {
                     current_inputs_check.swap_remove(index);
 
                     /* Checks if deleting a utxo is better than current input set */
-                    if cost(
+                    let new_cost = cost(
                         &current_inputs_check,
                         &output_target,
                         &output_total,
                         is_plutus,
-                    ) < cost(&current_inputs, &output_target, &output_total, is_plutus)
-                    {
+                    );
+                    if new_cost < current_cost {
                         current_value.checked_sub(&utxo.output.amount)?;
                         current_inputs = current_inputs_check;
 
@@ -841,6 +847,7 @@ impl TransactionBuilder {
                                 &utxo.input,
                                 &utxo.output.amount,
                             )?))?;
+                        current_cost = new_cost;
 
                         break;
                     }
