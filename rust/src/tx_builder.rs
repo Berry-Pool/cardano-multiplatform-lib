@@ -888,7 +888,7 @@ impl TransactionBuilder {
         hash: &ScriptHash,
         input: &TransactionInput,
         amount: &Value,
-        script_witness: &ScriptWitness,
+        script_witness: Option<ScriptWitness>,
     ) {
         if self
             .inputs
@@ -898,38 +898,48 @@ impl TransactionBuilder {
             return;
         }
 
-        match &script_witness.kind() {
-            ScriptWitnessKind::NativeWitness => {
-                let native_script = script_witness.as_native_witness().unwrap();
-                if !self.input_types.scripts.contains(hash) {
-                    self.add_native_script(&native_script);
-                    self.input_types.scripts.insert(hash.clone());
-                }
+        if script_witness.is_none() {
+            self.inputs.push(TxBuilderInput {
+                input: input.clone(),
+                amount: amount.clone(),
+                redeemer: None,
+            });
+        } else {
+            let sw = script_witness.unwrap();
+            match &sw.kind() {
+                ScriptWitnessKind::NativeWitness => {
+                    let native_script = sw.as_native_witness().unwrap();
+                    if !self.input_types.scripts.contains(hash) {
+                        self.add_native_script(&native_script);
+                        self.input_types.scripts.insert(hash.clone());
+                    }
 
-                self.inputs.push(TxBuilderInput {
-                    input: input.clone(),
-                    amount: amount.clone(),
-                    redeemer: None,
-                });
-            }
-            ScriptWitnessKind::PlutusWitness => {
-                let plutus_witness = script_witness.as_plutus_witness().unwrap();
-                if !self.input_types.scripts.contains(hash) && plutus_witness.script().is_some() {
-                    self.add_plutus_script(&plutus_witness.script().unwrap());
-                    self.input_types.scripts.insert(hash.clone());
+                    self.inputs.push(TxBuilderInput {
+                        input: input.clone(),
+                        amount: amount.clone(),
+                        redeemer: None,
+                    });
                 }
-                self.add_plutus_data(&plutus_witness.plutus_data().clone().unwrap());
+                ScriptWitnessKind::PlutusWitness => {
+                    let plutus_witness = sw.as_plutus_witness().unwrap();
+                    if !self.input_types.scripts.contains(hash) && plutus_witness.script().is_some()
+                    {
+                        self.add_plutus_script(&plutus_witness.script().unwrap());
+                        self.input_types.scripts.insert(hash.clone());
+                    }
+                    self.add_plutus_data(&plutus_witness.plutus_data().clone().unwrap());
 
-                self.inputs.push(TxBuilderInput {
-                    input: input.clone(),
-                    amount: amount.clone(),
-                    redeemer: Some(Redeemer::new(
-                        &RedeemerTag::new_spend(),
-                        &to_bignum(0), // will point to correct input when finalizing txBuilder
-                        &plutus_witness.redeemer(),
-                        &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
-                    )),
-                });
+                    self.inputs.push(TxBuilderInput {
+                        input: input.clone(),
+                        amount: amount.clone(),
+                        redeemer: Some(Redeemer::new(
+                            &RedeemerTag::new_spend(),
+                            &to_bignum(0), // will point to correct input when finalizing txBuilder
+                            &plutus_witness.redeemer(),
+                            &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
+                        )),
+                    });
+                }
             }
         }
     }
@@ -978,7 +988,7 @@ impl TransactionBuilder {
                 }
                 match &addr.payment_cred().to_scripthash() {
                     Some(hash) => {
-                        return self.add_script_input(hash, input, amount, &script_witness.unwrap())
+                        return self.add_script_input(hash, input, amount, script_witness)
                     }
                     None => (),
                 }
@@ -993,7 +1003,7 @@ impl TransactionBuilder {
                 }
                 match &addr.payment_cred().to_scripthash() {
                     Some(hash) => {
-                        return self.add_script_input(hash, input, amount, &script_witness.unwrap())
+                        return self.add_script_input(hash, input, amount, script_witness)
                     }
                     None => (),
                 }
@@ -1008,7 +1018,7 @@ impl TransactionBuilder {
                 }
                 match &addr.payment_cred().to_scripthash() {
                     Some(hash) => {
-                        return self.add_script_input(hash, input, amount, &script_witness.unwrap())
+                        return self.add_script_input(hash, input, amount, script_witness)
                     }
                     None => (),
                 }
