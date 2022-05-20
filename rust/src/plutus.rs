@@ -450,14 +450,14 @@ impl Languages {
 #[derive(
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
-pub struct PlutusMap(std::collections::BTreeMap<PlutusData, PlutusData>);
+pub struct PlutusMap(Vec<(PlutusData, PlutusData)>);
 
 to_from_bytes!(PlutusMap);
 
 #[wasm_bindgen]
 impl PlutusMap {
     pub fn new() -> Self {
-        Self(std::collections::BTreeMap::new())
+        Self(Vec::new())
     }
 
     pub fn len(&self) -> usize {
@@ -465,11 +465,26 @@ impl PlutusMap {
     }
 
     pub fn insert(&mut self, key: &PlutusData, value: &PlutusData) -> Option<PlutusData> {
-        self.0.insert(key.clone(), value.clone())
+        let index_exists = self.0.iter().position(|(k, _)| k == key);
+        match index_exists {
+            Some(index) => {
+                let old_value = self.0[index].1.clone();
+                self.0[index] = (key.clone(), value.clone());
+                Some(old_value)
+            }
+            None => {
+                self.0.push((key.clone(), value.clone()));
+                None
+            }
+        }
     }
 
     pub fn get(&self, key: &PlutusData) -> Option<PlutusData> {
-        self.0.get(key).map(|v| v.clone())
+        let item_exists = self.0.iter().find(|(k, _)| k == key);
+        match item_exists {
+            Some(item) => Some(item.1.clone()),
+            None => None,
+        }
     }
 
     pub fn keys(&self) -> PlutusList {
@@ -1774,7 +1789,7 @@ impl cbor_event::se::Serialize for PlutusMap {
 
 impl Deserialize for PlutusMap {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let mut table = std::collections::BTreeMap::new();
+        let mut table: Vec<(PlutusData, PlutusData)> = Vec::new();
         (|| -> Result<_, DeserializeError> {
             let len = raw.map()?;
             while match len {
@@ -1787,12 +1802,13 @@ impl Deserialize for PlutusMap {
                 }
                 let key = PlutusData::deserialize(raw)?;
                 let value = PlutusData::deserialize(raw)?;
-                if table.insert(key.clone(), value).is_some() {
+                if table.iter().find(|(k, _)| *k == key).is_some() {
                     return Err(DeserializeFailure::DuplicateKey(Key::Str(String::from(
                         "some complicated/unsupported type",
                     )))
                     .into());
                 }
+                table.push((key.clone(), value));
             }
             Ok(())
         })()
