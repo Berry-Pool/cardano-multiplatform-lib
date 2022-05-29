@@ -38,6 +38,7 @@ pub struct RequiredWitnessSet {
     plutus_scripts: HashSet<ScriptHash>,
     plutus_data: HashSet<DataHash>,
     redeemers: HashSet<RedeemerWitnessKey>,
+    plutus_v2_scripts: HashSet<ScriptHash>,
 }
 
 #[wasm_bindgen]
@@ -72,6 +73,11 @@ impl RequiredWitnessSet {
     pub fn add_plutus_script(&mut self, plutus_script: &PlutusScript) {
         self.add_plutus_hash(&plutus_script.hash(ScriptHashNamespace::PlutusV1));
     }
+
+    pub fn add_plutus_v2_script(&mut self, plutus_script: &PlutusScript) {
+        self.add_plutus_hash(&plutus_script.hash(ScriptHashNamespace::PlutusV2));
+    }
+
     pub fn add_plutus_hash(&mut self, plutus_script: &ScriptHash) {
         self.plutus_scripts.insert(plutus_script.clone());
     }
@@ -98,6 +104,8 @@ impl RequiredWitnessSet {
             .extend(requirements.native_scripts.iter().cloned());
         self.plutus_scripts
             .extend(requirements.plutus_scripts.iter().cloned());
+        self.plutus_v2_scripts
+            .extend(requirements.plutus_v2_scripts.iter().cloned());
         self.plutus_data
             .extend(requirements.plutus_data.iter().cloned());
         self.redeemers
@@ -129,6 +137,12 @@ impl RequiredWitnessSet {
             .map(|hash| format!("Plutus script hash:{}", hex::encode(hash.to_bytes())))
             .collect::<Vec<String>>()
             .join(",");
+        let plutus_v2_scripts = self
+            .plutus_v2_scripts
+            .iter()
+            .map(|hash| format!("Plutus v2 script hash:{}", hex::encode(hash.to_bytes())))
+            .collect::<Vec<String>>()
+            .join(",");
         let plutus_data = self
             .plutus_data
             .iter()
@@ -155,6 +169,7 @@ impl RequiredWitnessSet {
             plutus_scripts,
             plutus_data,
             redeemers,
+            plutus_v2_scripts,
         ]
         .iter()
         .filter(|msg| msg.len() > 0)
@@ -170,6 +185,7 @@ impl RequiredWitnessSet {
             + self.plutus_scripts.len()
             + self.plutus_data.len()
             + self.redeemers.len()
+            + self.plutus_v2_scripts.len()
     }
 
     pub fn new() -> Self {
@@ -180,6 +196,7 @@ impl RequiredWitnessSet {
             plutus_scripts: HashSet::new(),
             plutus_data: HashSet::new(),
             redeemers: HashSet::new(),
+            plutus_v2_scripts: HashSet::new(),
         }
     }
 }
@@ -195,6 +212,7 @@ pub struct TransactionWitnessSetBuilder {
     plutus_scripts: HashMap<ScriptHash, PlutusScript>,
     plutus_data: BTreeMap<DataHash, PlutusData>,
     redeemers: BTreeMap<RedeemerWitnessKey, Redeemer>,
+    plutus_v2_scripts: HashMap<ScriptHash, PlutusScript>,
 
     /// witnesses that need to be added for the build function to succeed
     /// this allows checking that witnesses are present at build time (instead of when submitting to a node)
@@ -226,6 +244,13 @@ impl TransactionWitnessSetBuilder {
         );
     }
 
+    pub fn add_plutus_v2_script(&mut self, plutus_script: &PlutusScript) {
+        self.plutus_v2_scripts.insert(
+            plutus_script.hash(ScriptHashNamespace::PlutusV2),
+            plutus_script.clone(),
+        );
+    }
+
     pub fn add_plutus_datum(&mut self, plutus_datum: &PlutusData) {
         self.plutus_data
             .insert(hash_plutus_data(&plutus_datum), plutus_datum.clone());
@@ -252,6 +277,7 @@ impl TransactionWitnessSetBuilder {
             plutus_data: BTreeMap::new(),
             redeemers: BTreeMap::new(),
             required_wits: RequiredWitnessSet::new(),
+            plutus_v2_scripts: HashMap::new(),
         }
     }
 
@@ -278,6 +304,12 @@ impl TransactionWitnessSetBuilder {
             None => (),
             Some(plutus_scripts) => plutus_scripts.0.iter().for_each(|plutus_script| {
                 self.add_plutus_script(plutus_script);
+            }),
+        };
+        match &wit_set.plutus_v2_scripts() {
+            None => (),
+            Some(plutus_scripts) => plutus_scripts.0.iter().for_each(|plutus_script| {
+                self.add_plutus_v2_script(plutus_script);
             }),
         };
         match &wit_set.plutus_data() {
@@ -326,6 +358,14 @@ impl TransactionWitnessSetBuilder {
             ));
             self.plutus_scripts.keys().for_each(|hash| {
                 remaining_wits.plutus_scripts.remove(hash);
+            });
+        }
+        if self.plutus_v2_scripts.len() > 0 {
+            result.set_plutus_v2_scripts(&PlutusScripts(
+                self.plutus_v2_scripts.values().cloned().collect(),
+            ));
+            self.plutus_v2_scripts.keys().for_each(|hash| {
+                remaining_wits.plutus_v2_scripts.remove(hash);
             });
         }
         if self.plutus_data.len() > 0 {
