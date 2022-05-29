@@ -178,7 +178,7 @@ pub struct CostModel(Vec<Int>);
 to_from_bytes!(CostModel);
 
 const OP_COUNT_V1: usize = 166;
-const OP_COUNT_V2: usize = 170;
+const OP_COUNT_V2: usize = 175;
 
 #[wasm_bindgen]
 impl CostModel {
@@ -894,7 +894,9 @@ pub enum ScriptEnum {
 }
 
 #[wasm_bindgen]
-#[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
+#[derive(
+    Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
+)]
 pub enum ScriptKind {
     NativeScript,
     PlutusScriptV1,

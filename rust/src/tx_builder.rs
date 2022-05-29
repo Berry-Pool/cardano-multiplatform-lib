@@ -31,7 +31,15 @@ fn witness_keys_for_cert(
                         if !tx_builder.input_types.scripts.contains(&hash)
                             && plutus_witness.script().is_some()
                         {
-                            tx_builder.add_plutus_script(&plutus_witness.script().unwrap());
+                            match plutus_witness.version() {
+                                LanguageKind::PlutusV1 => {
+                                    tx_builder.add_plutus_script(&plutus_witness.script().unwrap());
+                                }
+                                LanguageKind::PlutusV2 => {
+                                    tx_builder
+                                        .add_plutus_v2_script(&plutus_witness.script().unwrap());
+                                }
+                            }
                             tx_builder.input_types.scripts.insert(hash.clone());
                         }
                     }
@@ -61,7 +69,15 @@ fn witness_keys_for_cert(
                         if !tx_builder.input_types.scripts.contains(&hash)
                             && plutus_witness.script().is_some()
                         {
-                            tx_builder.add_plutus_script(&plutus_witness.script().unwrap());
+                            match plutus_witness.version() {
+                                LanguageKind::PlutusV1 => {
+                                    tx_builder.add_plutus_script(&plutus_witness.script().unwrap());
+                                }
+                                LanguageKind::PlutusV2 => {
+                                    tx_builder
+                                        .add_plutus_v2_script(&plutus_witness.script().unwrap());
+                                }
+                            }
                             tx_builder.input_types.scripts.insert(hash.clone());
                         }
                     }
@@ -196,6 +212,7 @@ fn fake_full_tx(
         plutus_scripts: tx_builder.plutus_scripts.clone(),
         plutus_data: tx_builder.collect_plutus_data(),
         redeemers: tx_builder.redeemers.clone(),
+        plutus_v2_scripts: tx_builder.plutus_v2_scripts.clone(),
     };
     Ok(Transaction {
         body,
@@ -473,6 +490,7 @@ pub struct TransactionBuilder {
     collateral_return: Option<TransactionOutput>,
     total_collateral: Option<Coin>,
     reference_inputs: Option<TransactionInputs>,
+    plutus_v2_scripts: Option<PlutusScripts>,
 }
 
 #[wasm_bindgen]
@@ -924,7 +942,14 @@ impl TransactionBuilder {
                     let plutus_witness = sw.as_plutus_witness().unwrap();
                     if !self.input_types.scripts.contains(hash) && plutus_witness.script().is_some()
                     {
-                        self.add_plutus_script(&plutus_witness.script().unwrap());
+                        match plutus_witness.version() {
+                            LanguageKind::PlutusV1 => {
+                                self.add_plutus_script(&plutus_witness.script().unwrap());
+                            }
+                            LanguageKind::PlutusV2 => {
+                                self.add_plutus_v2_script(&plutus_witness.script().unwrap());
+                            }
+                        }
                         self.input_types.scripts.insert(hash.clone());
                     }
                     self.add_plutus_data(&plutus_witness.plutus_data().clone().unwrap());
@@ -1129,6 +1154,17 @@ impl TransactionBuilder {
         self.plutus_scripts = Some(scripts);
     }
 
+    /// Add plutus v2 scripts via a PlutusScripts object
+    pub fn add_plutus_v2_script(&mut self, plutus_script: &PlutusScript) {
+        if self.plutus_v2_scripts.is_none() {
+            let scripts = PlutusScripts::new();
+            self.plutus_scripts = Some(scripts);
+        }
+        let mut scripts = self.plutus_v2_scripts.clone().unwrap();
+        scripts.add(&plutus_script);
+        self.plutus_v2_scripts = Some(scripts);
+    }
+
     /// Add plutus data via a PlutusData object
     pub fn add_plutus_data(&mut self, plutus_data: &PlutusData) {
         if self.plutus_data.is_none() {
@@ -1244,7 +1280,14 @@ impl TransactionBuilder {
                         if !self.input_types.scripts.contains(&hash)
                             && plutus_witness.script().is_some()
                         {
-                            self.add_plutus_script(&plutus_witness.script().unwrap());
+                            match plutus_witness.version() {
+                                LanguageKind::PlutusV1 => {
+                                    self.add_plutus_script(&plutus_witness.script().unwrap());
+                                }
+                                LanguageKind::PlutusV2 => {
+                                    self.add_plutus_v2_script(&plutus_witness.script().unwrap());
+                                }
+                            }
                             self.input_types.scripts.insert(hash.clone());
                         }
                         Some(Redeemer::new(
@@ -1371,7 +1414,15 @@ impl TransactionBuilder {
                     if !self.input_types.scripts.contains(&policy_id)
                         && plutus_witness.script().is_some()
                     {
-                        self.add_plutus_script(&plutus_witness.script().unwrap());
+                        match plutus_witness.version() {
+                            LanguageKind::PlutusV1 => {
+                                self.add_plutus_script(&plutus_witness.script().unwrap());
+                            }
+                            LanguageKind::PlutusV2 => {
+                                self.add_plutus_v2_script(&plutus_witness.script().unwrap());
+                            }
+                        }
+
                         self.input_types.scripts.insert(policy_id.clone());
                     }
                     Some(Redeemer::new(
@@ -1439,6 +1490,7 @@ impl TransactionBuilder {
             collateral_return: None,
             total_collateral: None,
             reference_inputs: None,
+            plutus_v2_scripts: None,
         }
     }
 

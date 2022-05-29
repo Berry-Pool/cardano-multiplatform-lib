@@ -180,12 +180,12 @@ pub struct PlutusWitness {
     redeemer: PlutusData,
     plutus_data: Option<PlutusData>,
     script: Option<PlutusScript>,
+    version: LanguageKind,
 }
 
 #[wasm_bindgen]
 impl PlutusWitness {
-    // Script is optional in Plutus v2, if script is supplied through reference input
-    // Script can also be supplied separately at the end of the tx builder
+    /// Plutus V1 witness or witness where no script is attached and so version doesn't matter
     pub fn new(
         redeemer: &PlutusData,
         plutus_data: Option<PlutusData>,
@@ -195,6 +195,20 @@ impl PlutusWitness {
             redeemer: redeemer.clone(),
             plutus_data: plutus_data.clone(),
             script: script.clone(),
+            version: LanguageKind::PlutusV1,
+        }
+    }
+
+    pub fn new_plutus_v2(
+        redeemer: &PlutusData,
+        plutus_data: Option<PlutusData>,
+        script: Option<PlutusScript>,
+    ) -> Self {
+        Self {
+            redeemer: redeemer.clone(),
+            plutus_data: plutus_data.clone(),
+            script: script.clone(),
+            version: LanguageKind::PlutusV2,
         }
     }
 
@@ -206,6 +220,9 @@ impl PlutusWitness {
     }
     pub fn script(&self) -> Option<PlutusScript> {
         self.script.clone()
+    }
+    pub fn version(&self) -> LanguageKind {
+        self.version.clone()
     }
 }
 

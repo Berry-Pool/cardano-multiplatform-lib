@@ -1671,6 +1671,7 @@ pub struct TransactionWitnessSet {
     plutus_scripts: Option<PlutusScripts>,
     plutus_data: Option<PlutusList>,
     redeemers: Option<Redeemers>,
+    plutus_v2_scripts: Option<PlutusScripts>,
 }
 
 to_from_bytes!(TransactionWitnessSet);
@@ -1723,8 +1724,16 @@ impl TransactionWitnessSet {
         self.redeemers = Some(redeemers.clone())
     }
 
+    pub fn set_plutus_v2_scripts(&mut self, plutus_scripts: &PlutusScripts) {
+        self.plutus_v2_scripts = Some(plutus_scripts.clone())
+    }
+
     pub fn redeemers(&self) -> Option<Redeemers> {
         self.redeemers.clone()
+    }
+
+    pub fn plutus_v2_scripts(&self) -> Option<PlutusScripts> {
+        self.plutus_v2_scripts.clone()
     }
 
     pub fn new() -> Self {
@@ -1735,6 +1744,7 @@ impl TransactionWitnessSet {
             plutus_scripts: None,
             plutus_data: None,
             redeemers: None,
+            plutus_v2_scripts: None,
         }
     }
 }

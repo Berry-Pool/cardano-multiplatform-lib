@@ -2609,6 +2609,9 @@ impl cbor_event::se::Serialize for TransactionWitnessSet {
             } + match &self.redeemers {
                 Some(_) => 1,
                 None => 0,
+            } + match &self.plutus_v2_scripts {
+                Some(_) => 1,
+                None => 0,
             },
         ))?;
         if let Some(field) = &self.vkeys {
@@ -2635,6 +2638,10 @@ impl cbor_event::se::Serialize for TransactionWitnessSet {
             serializer.write_unsigned_integer(5)?;
             field.serialize(serializer)?;
         }
+        if let Some(field) = &self.plutus_v2_scripts {
+            serializer.write_unsigned_integer(6)?;
+            field.serialize(serializer)?;
+        }
         Ok(serializer)
     }
 }
@@ -2650,6 +2657,7 @@ impl Deserialize for TransactionWitnessSet {
             let mut plutus_scripts = None;
             let mut plutus_data = None;
             let mut redeemers = None;
+            let mut plutus_v2_scripts = None;
             let mut read = 0;
             while match len {
                 cbor_event::Len::Len(n) => read < n as usize,
@@ -2729,6 +2737,18 @@ impl Deserialize for TransactionWitnessSet {
                                 .map_err(|e| e.annotate("redeemers"))?,
                             );
                         }
+                        6 => {
+                            if plutus_v2_scripts.is_some() {
+                                return Err(DeserializeFailure::DuplicateKey(Key::Uint(3)).into());
+                            }
+                            plutus_v2_scripts = Some(
+                                (|| -> Result<_, DeserializeError> {
+                                    read_len.read_elems(1)?;
+                                    Ok(PlutusScripts::deserialize(raw)?)
+                                })()
+                                .map_err(|e| e.annotate("plutus_v2_scripts"))?,
+                            );
+                        }
                         unknown_key => {
                             return Err(
                                 DeserializeFailure::UnknownKey(Key::Uint(unknown_key)).into()
@@ -2766,6 +2786,7 @@ impl Deserialize for TransactionWitnessSet {
                 plutus_scripts,
                 plutus_data,
                 redeemers,
+                plutus_v2_scripts,
             })
         })()
         .map_err(|e| e.annotate("TransactionWitnessSet"))
