@@ -6,7 +6,10 @@ use cbor_event::{
 use hex::FromHex;
 use itertools::Itertools;
 use serde_json;
-use std::ops::{Div, Rem, Sub};
+use std::{
+    cmp,
+    ops::{Div, Rem, Sub},
+};
 use std::{
     collections::HashMap,
     io::{BufRead, Seek, Write},
@@ -588,7 +591,7 @@ impl Deserialize for Value {
                             n => {
                                 return Err(
                                     DeserializeFailure::DefiniteLenMismatch(n, Some(2)).into()
-                                )
+                                );
                             }
                         },
                         cbor_event::Len::Indefinite => match raw.special()? {
@@ -1370,34 +1373,23 @@ pub(crate) fn hash_script(namespace: ScriptHashNamespace, script: Vec<u8>) -> Sc
 
 #[wasm_bindgen]
 pub fn min_ada_required(
-    assets: &Value,
-    has_data_hash: bool,          // whether the output includes a data hash
+    output: &TransactionOutput,
     coins_per_utxo_word: &BigNum, // protocol parameter (in lovelace)
 ) -> Result<BigNum, JsError> {
-    // based on https://github.com/input-output-hk/cardano-ledger-specs/blob/master/doc/explanations/min-utxo-alonzo.rst
-    let data_hash_size = if has_data_hash { 10 } else { 0 }; // in words
-    let utxo_entry_size_without_val = 27; // in words
+    let coins_per_utxo_byte =
+        (coins_per_utxo_word.checked_add(&to_bignum(7))?).checked_div(&to_bignum(8))?;
+    let constant_overhead = 160 as u64;
 
-    let size = bundle_size(
-        &assets,
-        &OutputSizeConstants {
-            k0: 6,
-            k1: 12,
-            k2: 1,
-        },
-    );
-    let words = to_bignum(utxo_entry_size_without_val)
-        .checked_add(&to_bignum(size as u64))?
-        .checked_add(&to_bignum(data_hash_size))?;
-    coins_per_utxo_word.checked_mul(&words)
-}
+    // we calculate min ada twice. we need to calculate it a second time to make sure the the added min ada to the output does also not exceed the min ada requirement itself
+    let old_coin_size = output.amount.coin.to_bytes().len();
+    let new_coin_size = to_bignum(output.to_bytes().len() as u64 + constant_overhead)
+        .checked_mul(&coins_per_utxo_byte)?
+        .to_bytes()
+        .len();
+    let final_coin_size = cmp::max(new_coin_size as i128 - old_coin_size as i128, 0) as u64;
 
-pub fn min_pure_ada(coins_per_utxo_word: &BigNum, has_data_hash: bool) -> Result<BigNum, JsError> {
-    min_ada_required(
-        &Value::new(&Coin::from_str("1000000")?),
-        has_data_hash,
-        coins_per_utxo_word,
-    )
+    to_bignum(output.to_bytes().len() as u64 + constant_overhead + final_coin_size)
+        .checked_mul(&coins_per_utxo_byte)
 }
 
 /// Used to choose the schema for a script JSON string
@@ -1602,6 +1594,44 @@ mod tests {
         }
     }
 
+    fn test_output() -> TransactionOutput {
+        fn harden(index: u32) -> u32 {
+            index | 0x80_00_00_00
+        }
+        fn root_key_15() -> Bip32PrivateKey {
+            // art forum devote street sure rather head chuckle guard poverty release quote oak craft enemy
+            let entropy = [
+                0x0c, 0xcb, 0x74, 0xf3, 0x6b, 0x7d, 0xa1, 0x64, 0x9a, 0x81, 0x44, 0x67, 0x55, 0x22,
+                0xd4, 0xd8, 0x09, 0x7c, 0x64, 0x12,
+            ];
+            Bip32PrivateKey::from_bip39_entropy(&entropy, &[])
+        }
+        let spend = root_key_15()
+            .derive(harden(1852))
+            .derive(harden(1815))
+            .derive(harden(0))
+            .derive(0)
+            .derive(0)
+            .to_public();
+        let stake = root_key_15()
+            .derive(harden(1852))
+            .derive(harden(1815))
+            .derive(harden(0))
+            .derive(2)
+            .derive(0)
+            .to_public();
+
+        let spend_cred = StakeCredential::from_keyhash(&spend.to_raw_key().hash());
+        let stake_cred = StakeCredential::from_keyhash(&stake.to_raw_key().hash());
+        let address = BaseAddress::new(
+            NetworkInfo::testnet().network_id(),
+            &spend_cred,
+            &stake_cred,
+        )
+        .to_address();
+        TransactionOutput::new(&address, &Value::new(&to_bignum(0)))
+    }
+
     // taken from https://github.com/input-output-hk/cardano-ledger-specs/blob/master/doc/explanations/min-utxo-alonzo.rst
     fn one_policy_one_0_char_asset() -> Value {
         let mut token_bundle = MultiAsset::new();
@@ -1699,151 +1729,100 @@ mod tests {
 
     #[test]
     fn min_ada_value_no_multiasset() {
+        let check_output = test_output();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &Value::new(&Coin::zero()),
-                    false,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            999978,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            978597,
         );
     }
 
     #[test]
     fn min_ada_value_one_policy_one_0_char_asset() {
+        let mut check_output = test_output();
+        check_output.amount = one_policy_one_0_char_asset();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &one_policy_one_0_char_asset(),
-                    false,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            1_310_316,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            1129482,
         );
     }
 
     #[test]
     fn min_ada_value_one_policy_one_1_char_asset() {
+        let mut check_output = test_output();
+        check_output.amount = one_policy_one_1_char_asset();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &one_policy_one_1_char_asset(),
-                    false,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            1_344_798,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            1133793,
         );
     }
 
     #[test]
     fn min_ada_value_one_policy_three_1_char_assets() {
+        let mut check_output = test_output();
+        check_output.amount = one_policy_three_1_char_assets();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &one_policy_three_1_char_assets(),
-                    false,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            1_448_244,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            1159659,
         );
     }
 
     #[test]
     fn min_ada_value_two_policies_one_0_char_asset() {
+        let mut check_output = test_output();
+        check_output.amount = two_policies_one_0_char_asset();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &two_policies_one_0_char_asset(),
-                    false,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            1_482_726,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            1271745,
         );
     }
 
     #[test]
     fn min_ada_value_two_policies_one_1_char_asset() {
+        let mut check_output = test_output();
+        check_output.amount = two_policies_one_1_char_asset();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &two_policies_one_1_char_asset(),
-                    false,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            1_517_208,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            1280367,
         );
     }
 
     #[test]
     fn min_ada_value_three_policies_96_1_char_assets() {
+        let mut check_output = test_output();
+        check_output.amount = three_policies_96_1_char_assets();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &three_policies_96_1_char_assets(),
-                    false,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            6_896_400,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            2642643,
         );
     }
 
     #[test]
     fn min_ada_value_one_policy_one_0_char_asset_datum_hash() {
+        let mut check_output = test_output();
+        check_output.amount = one_policy_one_0_char_asset();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &one_policy_one_0_char_asset(),
-                    true,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            1_655_136,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            1129482,
         );
     }
 
     #[test]
     fn min_ada_value_one_policy_three_32_char_assets_datum_hash() {
+        let mut check_output = test_output();
+        check_output.amount = one_policy_three_32_char_assets();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &one_policy_three_32_char_assets(),
-                    true,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            2_172_366,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            1573515,
         );
     }
 
     #[test]
     fn min_ada_value_two_policies_one_0_char_asset_datum_hash() {
+        let mut check_output = test_output();
+        check_output.amount = two_policies_one_0_char_asset();
         assert_eq!(
-            from_bignum(
-                &min_ada_required(
-                    &two_policies_one_0_char_asset(),
-                    true,
-                    &to_bignum(COINS_PER_UTXO_WORD)
-                )
-                .unwrap()
-            ),
-            1_827_546,
+            from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
+            1271745,
         );
     }
 

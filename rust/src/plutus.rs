@@ -388,6 +388,7 @@ impl ExUnits {
 
 #[wasm_bindgen]
 #[derive(
+    Hash,
     Clone,
     Copy,
     Debug,
@@ -406,6 +407,7 @@ pub enum LanguageKind {
 
 #[wasm_bindgen]
 #[derive(
+    Hash,
     Clone,
     Copy,
     Debug,
@@ -888,9 +890,12 @@ pub enum PlutusDatumSchema {
 )]
 pub struct Data(PlutusData);
 
+to_from_bytes!(Data);
+to_from_json!(Data);
+
 #[wasm_bindgen]
 impl Data {
-    pub fn new(&self, plutus_data: &PlutusData) -> Self {
+    pub fn new(plutus_data: &PlutusData) -> Self {
         Self(plutus_data.clone())
     }
 
@@ -924,17 +929,20 @@ pub enum ScriptKind {
 )]
 pub struct Script(ScriptEnum);
 
+to_from_bytes!(Script);
+to_from_json!(Script);
+
 #[wasm_bindgen]
 impl Script {
-    pub fn new_native(&self, native_script: &NativeScript) -> Self {
+    pub fn new_native(native_script: &NativeScript) -> Self {
         Self(ScriptEnum::NativeScript(native_script.clone()))
     }
 
-    pub fn new_plutus_v1(&self, plutus_script: &PlutusScript) -> Self {
+    pub fn new_plutus_v1(plutus_script: &PlutusScript) -> Self {
         Self(ScriptEnum::PlutusScriptV1(plutus_script.clone()))
     }
 
-    pub fn new_plutus_v2(&self, plutus_script: &PlutusScript) -> Self {
+    pub fn new_plutus_v2(plutus_script: &PlutusScript) -> Self {
         Self(ScriptEnum::PlutusScriptV2(plutus_script.clone()))
     }
 
@@ -973,11 +981,14 @@ impl Script {
 #[derive(
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
-pub struct ScriptRef(Script);
+pub struct ScriptRef(pub Script);
+
+to_from_bytes!(ScriptRef);
+to_from_json!(ScriptRef);
 
 #[wasm_bindgen]
 impl ScriptRef {
-    pub fn new(&self, script: &Script) -> Self {
+    pub fn new(script: &Script) -> Self {
         Self(script.clone())
     }
 
@@ -1007,6 +1018,7 @@ pub enum DatumKind {
 )]
 pub struct Datum(DatumEnum);
 
+to_from_bytes!(Datum);
 to_from_json!(Datum);
 
 #[wasm_bindgen]
@@ -1316,11 +1328,11 @@ impl Deserialize for Datum {
         (|| -> Result<_, DeserializeError> {
             let len = raw.array()?;
             if let cbor_event::Len::Len(n) = len {
-                if n != 1 || n != 2 {
+                if n != 1 && n != 2 {
                     return Err(DeserializeFailure::CBOR(cbor_event::Error::WrongLen(
                         2,
                         len,
-                        "[id, hash]",
+                        "[hash, inline]",
                     ))
                     .into());
                 }
@@ -1415,14 +1427,14 @@ impl cbor_event::se::Serialize for Data {
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
         serializer.write_tag(24u64)?;
-        self.0.serialize(serializer)
+        serializer.write_bytes(&self.0.to_bytes())
     }
 }
 
 impl Deserialize for Data {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         match raw.tag()? {
-            24 => Ok(Self(PlutusData::deserialize(raw)?)),
+            24 => Ok(Self(PlutusData::from_bytes(raw.bytes()?)?)),
             n => Err(DeserializeFailure::TagMismatch {
                 found: n,
                 expected: 24,
@@ -1438,14 +1450,14 @@ impl cbor_event::se::Serialize for ScriptRef {
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
         serializer.write_tag(24u64)?;
-        self.0.serialize(serializer)
+        serializer.write_bytes(&self.0.to_bytes())
     }
 }
 
 impl Deserialize for ScriptRef {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         match raw.tag()? {
-            24 => Ok(Self(Script::deserialize(raw)?)),
+            24 => Ok(Self(Script::from_bytes(raw.bytes()?)?)),
             n => Err(DeserializeFailure::TagMismatch {
                 found: n,
                 expected: 24,

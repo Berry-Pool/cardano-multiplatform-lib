@@ -753,61 +753,61 @@ impl DeserializeEmbeddedGroup for TransactionInput {
     }
 }
 
-impl cbor_event::se::Serialize for TransactionOutput {
-    fn serialize<'se, W: Write>(
-        &self,
-        serializer: &'se mut Serializer<W>,
-    ) -> cbor_event::Result<&'se mut Serializer<W>> {
-        serializer.write_array(cbor_event::Len::Len(if self.datum.is_some() {
-            3
-        } else {
-            2
-        }))?;
-        self.address.serialize(serializer)?;
-        self.amount.serialize(serializer)?;
-        if let Some(data_hash) = self.datum.as_ref().and_then(|datum| datum.as_data_hash()) {
-            data_hash.serialize(serializer)?;
-        }
-        Ok(serializer)
-    }
-}
-
-// post alonzo
-// TODO ENABLE after Babbage
 // impl cbor_event::se::Serialize for TransactionOutput {
 //     fn serialize<'se, W: Write>(
 //         &self,
 //         serializer: &'se mut Serializer<W>,
 //     ) -> cbor_event::Result<&'se mut Serializer<W>> {
-//         serializer.write_map(cbor_event::Len::Len(
-//             2 + match &self.datum {
-//                 Some(_) => 1,
-//                 None => 0,
-//             } + match &self.script_ref {
-//                 Some(_) => 1,
-//                 None => 0,
-//             },
-//         ))?;
-
-//         serializer.write_unsigned_integer(0)?;
+//         serializer.write_array(cbor_event::Len::Len(if self.datum.is_some() {
+//             3
+//         } else {
+//             2
+//         }))?;
 //         self.address.serialize(serializer)?;
-
-//         serializer.write_unsigned_integer(1)?;
 //         self.amount.serialize(serializer)?;
-
-//         if let Some(datum) = &self.datum {
-//             serializer.write_unsigned_integer(2)?;
-//             datum.serialize(serializer)?;
+//         if let Some(data_hash) = self.datum.as_ref().and_then(|datum| datum.as_data_hash()) {
+//             data_hash.serialize(serializer)?;
 //         }
-
-//         if let Some(script_ref) = &self.script_ref {
-//             serializer.write_unsigned_integer(3)?;
-//             script_ref.serialize(serializer)?;
-//         }
-
 //         Ok(serializer)
 //     }
 // }
+
+// post alonzo
+// TODO ENABLE after Babbage
+impl cbor_event::se::Serialize for TransactionOutput {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_map(cbor_event::Len::Len(
+            2 + match &self.datum {
+                Some(_) => 1,
+                None => 0,
+            } + match &self.script_ref {
+                Some(_) => 1,
+                None => 0,
+            },
+        ))?;
+
+        serializer.write_unsigned_integer(0)?;
+        self.address.serialize(serializer)?;
+
+        serializer.write_unsigned_integer(1)?;
+        self.amount.serialize(serializer)?;
+
+        if let Some(datum) = &self.datum {
+            serializer.write_unsigned_integer(2)?;
+            datum.serialize(serializer)?;
+        }
+
+        if let Some(script_ref) = &self.script_ref {
+            serializer.write_unsigned_integer(3)?;
+            script_ref.serialize(serializer)?;
+        }
+
+        Ok(serializer)
+    }
+}
 
 // this is used when deserializing it on its own, but the more likely case
 // is when it's done via TransactionOutputs
@@ -834,6 +834,7 @@ impl DeserializeEmbeddedGroup for TransactionOutput {
         let len: cbor_event::Len;
         let result = match raw.cbor_type()? {
             cbor_event::Type::Array => {
+                // legacy output format
                 len = raw.array()?;
                 let address =
                     (|| -> Result<_, DeserializeError> { Ok(Address::deserialize(raw)?) })()
@@ -927,6 +928,7 @@ impl DeserializeEmbeddedGroup for TransactionOutput {
                                 }
                                 datum = Some(
                                     (|| -> Result<_, DeserializeError> {
+                                        read_len.read_elems(1)?;
                                         Ok(Datum::deserialize(raw)?)
                                     })()
                                     .map_err(|e| e.annotate("datum"))?,
@@ -940,6 +942,7 @@ impl DeserializeEmbeddedGroup for TransactionOutput {
                                 }
                                 script_ref = Some(
                                     (|| -> Result<_, DeserializeError> {
+                                        read_len.read_elems(1)?;
                                         Ok(ScriptRef::deserialize(raw)?)
                                     })()
                                     .map_err(|e| e.annotate("script_ref"))?,
@@ -992,8 +995,8 @@ impl DeserializeEmbeddedGroup for TransactionOutput {
                 Ok(TransactionOutput {
                     address,
                     amount,
-                    datum: datum,
-                    script_ref: script_ref,
+                    datum,
+                    script_ref,
                 })
             }
             _ => return Err(DeserializeFailure::NoVariantMatched.into()),
