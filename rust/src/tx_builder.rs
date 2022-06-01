@@ -298,11 +298,6 @@ pub struct TransactionBuilderConfig {
     ex_unit_prices: ExUnitPrices, // protocol parameter
     costmdls: Costmdls,           // protocol parameter
     blockfrost: Blockfrost,
-    prefer_pure_change: bool,
-    collateral_amount: BigNum,
-    min_split_amount_ada: BigNum,
-    prefer_split_change: bool,
-    native_asset_chunk_size: u32,
 }
 
 #[wasm_bindgen]
@@ -317,11 +312,6 @@ pub struct TransactionBuilderConfigBuilder {
     ex_unit_prices: Option<ExUnitPrices>, // protocol parameter
     costmdls: Option<Costmdls>,           // protocol parameter
     blockfrost: Option<Blockfrost>,
-    prefer_pure_change: bool,
-    collateral_amount: BigNum,
-    min_split_amount_ada: BigNum,
-    prefer_split_change: bool,
-    native_asset_chunk_size: Option<u32>,
 }
 
 #[wasm_bindgen]
@@ -337,11 +327,6 @@ impl TransactionBuilderConfigBuilder {
             ex_unit_prices: None,
             costmdls: None,
             blockfrost: None,
-            prefer_pure_change: false,
-            collateral_amount: to_bignum(5000000),
-            min_split_amount_ada: to_bignum(100),
-            prefer_split_change: false,
-            native_asset_chunk_size: None,
         }
     }
 
@@ -399,27 +384,6 @@ impl TransactionBuilderConfigBuilder {
         cfg
     }
 
-    pub fn prefer_pure_change(&self, prefer_pure_change: bool) -> Self {
-        let mut cfg = self.clone();
-        cfg.prefer_pure_change = prefer_pure_change;
-        cfg
-    }
-
-    pub fn prefer_split_change(
-        &self,
-        prefer_split_change: bool,
-        collateral_amount: BigNum,
-        min_split_amount_ada: BigNum,
-        native_asset_chunk_size: u32,
-    ) -> Self {
-        let mut cfg = self.clone();
-        cfg.prefer_split_change = prefer_split_change;
-        cfg.collateral_amount = collateral_amount;
-        cfg.min_split_amount_ada = min_split_amount_ada;
-        cfg.native_asset_chunk_size = Some(native_asset_chunk_size);
-        cfg
-    }
-
     pub fn build(&self) -> Result<TransactionBuilderConfig, JsError> {
         let cfg = self.clone();
         Ok(TransactionBuilderConfig {
@@ -454,11 +418,6 @@ impl TransactionBuilderConfigBuilder {
             } else {
                 Blockfrost::new("".to_string(), "".to_string())
             },
-            prefer_pure_change: cfg.prefer_pure_change,
-            prefer_split_change: cfg.prefer_split_change,
-            collateral_amount: cfg.collateral_amount,
-            min_split_amount_ada: cfg.min_split_amount_ada,
-            native_asset_chunk_size: cfg.native_asset_chunk_size.unwrap_or(0),
         })
     }
 }
@@ -1005,7 +964,7 @@ impl TransactionBuilder {
 
         // get plutus version for script from scriptRef
         match &utxo.output.script_ref {
-            Some(sr) => match sr.0.kind() {
+            Some(sr) => match sr.get().kind() {
                 ScriptKind::PlutusScriptV1 => {
                     self.plutus_versions.insert(Language::new_plutus_v1());
                 }
@@ -1077,7 +1036,7 @@ impl TransactionBuilder {
 
         // get plutus version for script from scriptRef
         match &utxo.output.script_ref {
-            Some(sr) => match sr.0.kind() {
+            Some(sr) => match sr.get().kind() {
                 ScriptKind::PlutusScriptV1 => {
                     self.plutus_versions.insert(Language::new_plutus_v1());
                 }
@@ -2235,7 +2194,7 @@ impl TransactionBuilder {
                                     .unwrap(),
                             )
                             .is_positive()
-                            && output.amount.coin.compare(&self.config.collateral_amount) != 0
+                            && output.amount.coin.compare(&to_bignum(5000000)) != 0
                     })
                     .ok_or_else(|| JsError::from_str("No change output found"));
 
@@ -2461,7 +2420,6 @@ mod tests {
                 .max_value_size(MAX_VALUE_SIZE)
                 .max_tx_size(MAX_TX_SIZE)
                 .coins_per_utxo_word(&to_bignum(1))
-                .prefer_pure_change(true)
                 .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
                 .build()
                 .unwrap(),
@@ -5208,7 +5166,6 @@ mod tests {
                 .max_tx_size(MAX_TX_SIZE)
                 .coins_per_utxo_word(&to_bignum(1))
                 .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
-                .prefer_pure_change(true)
                 .build()
                 .unwrap(),
         );

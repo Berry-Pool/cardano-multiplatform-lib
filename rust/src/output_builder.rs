@@ -11,7 +11,7 @@ use super::*;
 pub struct TransactionOutputBuilder {
     address: Option<Address>,
     datum: Option<Datum>,
-    scriptRef: Option<ScriptRef>,
+    script_ref: Option<ScriptRef>,
 }
 
 #[wasm_bindgen]
@@ -20,7 +20,7 @@ impl TransactionOutputBuilder {
         Self {
             address: None,
             datum: None,
-            scriptRef: None,
+            script_ref: None,
         }
     }
 
@@ -43,7 +43,7 @@ impl TransactionOutputBuilder {
             ))?,
             amount: None,
             datum: self.datum.clone(),
-            scriptRef: self.scriptRef.clone(),
+            script_ref: self.script_ref.clone(),
         })
     }
 }
@@ -54,7 +54,7 @@ pub struct TransactionOutputAmountBuilder {
     address: Address,
     amount: Option<Value>,
     datum: Option<Datum>,
-    scriptRef: Option<ScriptRef>,
+    script_ref: Option<ScriptRef>,
 }
 
 #[wasm_bindgen]
@@ -91,14 +91,14 @@ impl TransactionOutputAmountBuilder {
             &self.amount.clone().unwrap_or(Value::new(&to_bignum(0))),
         );
         min_output.datum = self.datum.clone();
-        min_output.script_ref = self.scriptRef.clone();
+        min_output.script_ref = self.script_ref.clone();
         let min_possible_coin = min_ada_required(&min_output, &coins_per_utxo_word)?;
         let mut value = Value::new(&min_possible_coin);
         value.set_multiasset(multiasset);
 
         let mut check_outupt = TransactionOutput::new(&self.address, &value);
         check_outupt.datum = self.datum.clone();
-        check_outupt.script_ref = self.scriptRef.clone();
+        check_outupt.script_ref = self.script_ref.clone();
 
         let required_coin = min_ada_required(&check_outupt, &coins_per_utxo_word)?;
 

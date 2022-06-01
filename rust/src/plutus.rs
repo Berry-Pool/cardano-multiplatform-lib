@@ -981,7 +981,7 @@ impl Script {
 #[derive(
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
-pub struct ScriptRef(pub Script);
+pub struct ScriptRef(Script);
 
 to_from_bytes!(ScriptRef);
 to_from_json!(ScriptRef);
@@ -1434,7 +1434,7 @@ impl cbor_event::se::Serialize for Data {
 impl Deserialize for Data {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         match raw.tag()? {
-            24 => Ok(Self(PlutusData::from_bytes(raw.bytes()?)?)),
+            24 => Ok(Self(PlutusData::from_bytes(raw.bytes()?).unwrap())),
             n => Err(DeserializeFailure::TagMismatch {
                 found: n,
                 expected: 24,
@@ -1457,7 +1457,7 @@ impl cbor_event::se::Serialize for ScriptRef {
 impl Deserialize for ScriptRef {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         match raw.tag()? {
-            24 => Ok(Self(Script::from_bytes(raw.bytes()?)?)),
+            24 => Ok(Self(Script::from_bytes(raw.bytes()?).unwrap())),
             n => Err(DeserializeFailure::TagMismatch {
                 found: n,
                 expected: 24,
