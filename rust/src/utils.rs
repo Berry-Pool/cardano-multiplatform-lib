@@ -128,6 +128,16 @@ impl TransactionUnspentOutput {
     pub fn output(&self) -> TransactionOutput {
         self.output.clone()
     }
+
+    pub fn to_legacy_bytes(&self) -> Vec<u8> {
+        let mut serializer = cbor_event::se::Serializer::new_vec();
+        serializer.write_array(cbor_event::Len::Len(2)).unwrap();
+        self.input.serialize(&mut serializer).unwrap();
+        serializer
+            .write_raw_bytes(self.output.to_legacy_bytes().as_slice())
+            .unwrap();
+        serializer.finalize()
+    }
 }
 
 impl cbor_event::se::Serialize for TransactionUnspentOutput {

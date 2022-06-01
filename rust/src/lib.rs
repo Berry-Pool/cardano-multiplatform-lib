@@ -513,6 +513,26 @@ impl TransactionOutput {
             script_ref: None,
         }
     }
+
+    /// legacy support: serialize output as array array
+    ///
+    /// does not support inline datum and script_ref!
+    pub fn to_legacy_bytes(&self) -> Vec<u8> {
+        let mut serializer = cbor_event::se::Serializer::new_vec();
+        serializer
+            .write_array(cbor_event::Len::Len(if self.datum.is_some() {
+                3
+            } else {
+                2
+            }))
+            .unwrap();
+        self.address.serialize(&mut serializer).unwrap();
+        self.amount.serialize(&mut serializer).unwrap();
+        if let Some(data_hash) = self.datum.as_ref().and_then(|datum| datum.as_data_hash()) {
+            data_hash.serialize(&mut serializer).unwrap();
+        }
+        serializer.finalize()
+    }
 }
 
 #[wasm_bindgen]
