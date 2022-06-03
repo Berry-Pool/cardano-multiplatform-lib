@@ -1,3 +1,5 @@
+use itertools::Itertools;
+
 use super::fees;
 use super::output_builder::TransactionOutputAmountBuilder;
 use super::utils;
@@ -275,18 +277,6 @@ struct TxBuilderWithdrawal {
 }
 
 #[wasm_bindgen]
-pub enum CoinSelectionStrategyCIP2 {
-    /// Performs CIP2's Largest First ada-only selection. Will error if outputs contain non-ADA assets.
-    LargestFirst,
-    /// Performs CIP2's Random Improve ada-only selection. Will error if outputs contain non-ADA assets.
-    RandomImprove,
-    /// Same as LargestFirst, but before adding ADA, will insert by largest-first for each asset type.
-    LargestFirstMultiAsset,
-    /// Same as RandomImprove, but before adding ADA, will insert by random-improve for each asset type.
-    RandomImproveMultiAsset,
-}
-
-#[wasm_bindgen]
 #[derive(Clone, Debug)]
 pub struct TransactionBuilderConfig {
     fee_algo: fees::LinearFee,
@@ -297,6 +287,8 @@ pub struct TransactionBuilderConfig {
     coins_per_utxo_word: Coin,    // protocol parameter
     ex_unit_prices: ExUnitPrices, // protocol parameter
     costmdls: Costmdls,           // protocol parameter
+    collateral_percentage: u32,   // protocol parameter
+    max_collateral_inputs: u32,   // protocol parameter
     blockfrost: Blockfrost,
 }
 
@@ -311,6 +303,8 @@ pub struct TransactionBuilderConfigBuilder {
     coins_per_utxo_word: Option<Coin>,    // protocol parameter
     ex_unit_prices: Option<ExUnitPrices>, // protocol parameter
     costmdls: Option<Costmdls>,           // protocol parameter
+    collateral_percentage: Option<u32>,   // protocol parameter
+    max_collateral_inputs: Option<u32>,   // protocol parameter
     blockfrost: Option<Blockfrost>,
 }
 
@@ -326,6 +320,8 @@ impl TransactionBuilderConfigBuilder {
             coins_per_utxo_word: None,
             ex_unit_prices: None,
             costmdls: None,
+            collateral_percentage: None,
+            max_collateral_inputs: None,
             blockfrost: None,
         }
     }
@@ -378,6 +374,18 @@ impl TransactionBuilderConfigBuilder {
         cfg
     }
 
+    pub fn collateral_percentage(&self, collateral_percentage: u32) -> Self {
+        let mut cfg = self.clone();
+        cfg.collateral_percentage = Some(collateral_percentage);
+        cfg
+    }
+
+    pub fn max_collateral_inputs(&self, max_collateral_inputs: u32) -> Self {
+        let mut cfg = self.clone();
+        cfg.max_collateral_inputs = Some(max_collateral_inputs);
+        cfg
+    }
+
     pub fn blockfrost(&self, blockfrost: &Blockfrost) -> Self {
         let mut cfg = self.clone();
         cfg.blockfrost = Some(blockfrost.clone());
@@ -413,6 +421,12 @@ impl TransactionBuilderConfigBuilder {
             } else {
                 Costmdls::new()
             },
+            collateral_percentage: cfg.collateral_percentage.ok_or(JsError::from_str(
+                "uninitialized field: collateral_percentage",
+            ))?,
+            max_collateral_inputs: cfg.max_collateral_inputs.ok_or(JsError::from_str(
+                "uninitialized field: max_collateral_inputs",
+            ))?,
             blockfrost: if cfg.blockfrost.is_some() {
                 cfg.blockfrost.unwrap()
             } else {
@@ -439,7 +453,7 @@ pub struct TransactionBuilder {
     mint: Option<Vec<TxBuilderMint>>,
     native_scripts: Option<NativeScripts>,
     script_data_hash: Option<ScriptDataHash>,
-    collateral: Option<TransactionInputs>,
+    collateral: Option<Vec<TxBuilderInput>>,
     required_signers: Option<RequiredSigners>,
     network_id: Option<NetworkId>,
     plutus_scripts: Option<PlutusScripts>,
@@ -1478,14 +1492,20 @@ impl TransactionBuilder {
         self.script_data_hash.clone()
     }
 
-    pub fn add_collateral(&mut self, address: &Address, collateral: &TransactionInput) {
+    pub fn add_collateral(&mut self, utxo: &TransactionUnspentOutput) {
         if self.collateral.is_none() {
-            self.collateral = Some(TransactionInputs::new());
+            self.collateral = Some(Vec::new());
         }
 
         let mut inputs = self.collateral.clone().unwrap();
-        inputs.add(collateral);
+        inputs.push(TxBuilderInput {
+            input: utxo.input.clone(),
+            amount: utxo.output.amount.clone(),
+            redeemer: None,
+        });
         self.collateral = Some(inputs.clone());
+
+        let address = &utxo.output.address;
 
         match &BaseAddress::from_address(address) {
             Some(addr) => {
@@ -1546,8 +1566,15 @@ impl TransactionBuilder {
         }
     }
 
-    pub fn collateral(&self) -> Option<TransactionInputs> {
-        self.collateral.clone()
+    pub fn get_collateral(&self) -> Option<TransactionInputs> {
+        if let None = self.collateral {
+            return None;
+        }
+        let mut inputs = TransactionInputs::new();
+        for tx_builder_input in self.collateral.clone().unwrap() {
+            inputs.add(&tx_builder_input.input);
+        }
+        Some(inputs)
     }
 
     pub fn add_required_signer(&mut self, required_signer: &Ed25519KeyHash) {
@@ -1986,12 +2013,11 @@ impl TransactionBuilder {
                     ))
                 }
             },
-            collateral: self.collateral.clone(),
+            collateral: self.get_collateral().clone(),
             required_signers: self.required_signers.clone(),
             network_id: self.network_id.clone(),
-            // TODO: babbage support
-            collateral_return: None,
-            total_collateral: None,
+            collateral_return: self.collateral_return.clone(),
+            total_collateral: self.total_collateral.clone(),
             reference_inputs: self.reference_inputs.clone(),
         };
         // we must build a tx with fake data (of correct size) to check the final Transaction size
@@ -2146,12 +2172,138 @@ impl TransactionBuilder {
         }
     }
 
+    // TODO
+    // fn calculate_collateral(&self) -> Result<((), JsError> {
+    //     Ok(())
+    // }
+
+    // returns the new fee
+    fn update_fee_and_balance(&mut self) -> Result<BigNum, JsError> {
+        let mut old_fee = self.fee.clone().unwrap();
+        let mut new_fee = min_fee(self)?;
+
+        if old_fee >= new_fee {
+            return Ok(old_fee);
+        }
+        // we run in a loop to make 100% sure that adding to fee field and subtracting from output does not change bytes length
+        // if it does we loop again and adjust accordingly
+        while old_fee < new_fee {
+            let index = self.change_outputs.len() - 1;
+            let change_output = &mut self.change_outputs.0[index];
+
+            // assumes new fee is always higher than previously set fee
+            let amount_to_subtract = new_fee.checked_sub(&old_fee)?;
+
+            change_output.amount = change_output
+                .amount
+                .checked_sub(&Value::new(&amount_to_subtract))?;
+
+            if change_output.amount.coin
+                < min_ada_required(&change_output, &self.config.coins_per_utxo_word)?
+                && change_output.amount.multiasset.is_some()
+            {
+                return Err(JsError::from_str("Not enough ADA leftover to cover fees"));
+            }
+            // burn whole output
+            if change_output.amount.coin
+                < min_ada_required(&change_output, &self.config.coins_per_utxo_word)?
+            {
+                let fee = old_fee
+                    .checked_add(&change_output.amount.coin)?
+                    .checked_add(&amount_to_subtract)?;
+                self.set_fee(&fee);
+                self.change_outputs.0.pop().unwrap();
+                return Ok(fee);
+            }
+
+            self.set_fee(&new_fee);
+
+            old_fee = self.fee.clone().unwrap();
+            new_fee = min_fee(self)?;
+        }
+
+        Ok(new_fee)
+    }
+
+    fn update_collateral_and_balance(
+        &mut self,
+        collateral: &Vec<TxBuilderInput>,
+        collateral_change_address: &Address,
+    ) -> Result<BigNum, JsError> {
+        let mut old_total_col = self
+            .fee
+            .unwrap()
+            .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?;
+        let mut new_total_col = self
+            .update_fee_and_balance()?
+            .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?;
+
+        if old_total_col >= new_total_col {
+            return Ok(old_total_col);
+        }
+
+        let collateral_input_value = collateral.iter().fold(Value::zero(), |acc, input| {
+            acc.checked_add(&input.amount).unwrap()
+        });
+
+        let get_collateral_return = |input_value: &Value, total_col: &BigNum| {
+            TransactionOutput::new(
+                &collateral_change_address,
+                &input_value.checked_sub(&Value::new(&total_col)).unwrap(),
+            )
+        };
+
+        while old_total_col < new_total_col {
+            let collateral_return = get_collateral_return(&collateral_input_value, &new_total_col);
+
+            // burn whole return output
+            if collateral_return.amount.coin
+                < min_ada_required(&collateral_return, &self.config.coins_per_utxo_word)?
+                && collateral_return.amount.coin >= new_total_col
+                && collateral_return.amount.multiasset.is_none()
+            {
+                self.total_collateral = Some(collateral_return.amount.coin.clone());
+                self.collateral_return = None;
+                return Ok(collateral_return.amount.coin);
+            }
+
+            if collateral_return.amount.coin
+                < min_ada_required(&collateral_return, &self.config.coins_per_utxo_word)?
+            {
+                return Err(JsError::from_str("Not enough ADA leftover to cover fees"));
+            }
+
+            self.total_collateral = Some(new_total_col.clone());
+
+            self.collateral_return = Some(collateral_return.clone());
+
+            old_total_col = self
+                .fee
+                .unwrap()
+                .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?;
+            new_total_col = self
+                .update_fee_and_balance()?
+                .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?;
+        }
+        Ok(new_total_col)
+    }
+
     /// Returns full Transaction object with the body and the auxiliary data
+    ///
     /// NOTE: witness_set will contain all mint_scripts if any been added or set
+    ///
     /// takes fetched ex units into consideration
+    ///
+    /// add collateral utxos and collateral change receiver in case you redeem from plutus script utxos
+    ///
     /// async call
+    ///
     /// NOTE: is_valid set to true
-    pub async fn construct(self) -> Result<Transaction, JsError> {
+    pub async fn construct(
+        self,
+        collateral_utxos: Option<TransactionUnspentOutputs>,
+        collateral_change_address: Option<Address>,
+    ) -> Result<Transaction, JsError> {
         let this = &mut self.clone();
         this.redeemers = this.collect_redeemers();
         let (body, full_tx_size) = this.build_and_size()?;
@@ -2173,56 +2325,55 @@ impl TransactionBuilder {
                     get_ex_units(full_tx.clone(), &this.config.blockfrost).await?;
                 this.redeemers = Some(updated_redeemers);
 
-                // set new fee and and subract remaining amount from a change output
-                let old_fee = full_tx.body.fee.clone();
-                let new_fee = min_fee(this)?;
-                this.set_fee(&new_fee);
-                let amount_to_subtract = new_fee.checked_sub(&old_fee)?;
-                // get index of a change output which has sufficient balance and is not collateral change output
-                let mut index_or_error = this
-                    .change_outputs
-                    .0
-                    .iter()
-                    .position(|output| {
-                        output
+                let pure_ada = |output: &TransactionOutput| -> BigNum {
+                    match &output.amount.multiasset {
+                        Some(_) => output
                             .amount
                             .coin
-                            .checked_sub(&amount_to_subtract)
-                            .unwrap_or(to_bignum(0))
-                            .compare(
-                                &min_ada_required(&output, &this.config.coins_per_utxo_word)
+                            .checked_sub(
+                                &min_ada_required(&output, &self.config.coins_per_utxo_word)
                                     .unwrap(),
                             )
-                            .is_positive()
-                            && output.amount.coin.compare(&to_bignum(5000000)) != 0
-                    })
-                    .ok_or_else(|| JsError::from_str("No change output found"));
+                            .unwrap_or(to_bignum(0)),
+                        None => output.amount.coin,
+                    }
+                };
 
-                // didn't find any other outputs with enough lovelaces so now check all change outputs one more time
-                if index_or_error.is_err() {
-                    index_or_error = this
-                        .change_outputs
-                        .0
-                        .iter()
-                        .position(|output| {
-                            output
-                                .amount
-                                .coin
-                                .checked_sub(&amount_to_subtract)
-                                .unwrap_or(to_bignum(0))
-                                .compare(
-                                    &min_ada_required(&output, &this.config.coins_per_utxo_word)
-                                        .unwrap(),
-                                )
-                                .is_positive()
-                        })
-                        .ok_or_else(|| JsError::from_str("No change output found"));
+                let mut available_collateral: Vec<TransactionUnspentOutput> = collateral_utxos
+                    .unwrap()
+                    .0
+                    .into_iter()
+                    .sorted_by(|a, b| pure_ada(&a.output).cmp(&pure_ada(&b.output)))
+                    .collect();
+
+                let mut collateral = this.collateral.clone().unwrap_or(Vec::new());
+
+                loop {
+                    match this.update_collateral_and_balance(
+                        &collateral,
+                        &collateral_change_address.clone().unwrap(),
+                    ) {
+                        Ok(_) => {
+                            break;
+                        }
+                        Err(_) => (),
+                    };
+
+                    if collateral.len() as u32 >= this.config.max_collateral_inputs {
+                        return Err(JsError::from_str("Max collateral inputs reached"));
+                    }
+                    if available_collateral.len() <= 0 {
+                        return Err(JsError::from_str("Insufficient collateral balance"));
+                    }
+
+                    let utxo = available_collateral.pop().unwrap();
+                    collateral.push(TxBuilderInput {
+                        input: utxo.input.clone(),
+                        amount: utxo.output.amount.clone(),
+                        redeemer: None,
+                    });
+                    this.collateral = Some(collateral.clone());
                 }
-                let index = index_or_error.unwrap();
-
-                this.change_outputs.0[index].amount = this.change_outputs.0[index]
-                    .amount
-                    .checked_sub(&Value::new(&amount_to_subtract))?;
 
                 let (final_body, final_full_tx_size) = this.build_and_size()?;
 
@@ -2371,6 +2522,8 @@ mod tests {
             .max_tx_size(MAX_TX_SIZE)
             .coins_per_utxo_word(&to_bignum(coins_per_utxo_word))
             .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
+            .collateral_percentage(150)
+            .max_collateral_inputs(3)
             .build()
             .unwrap();
         TransactionBuilder::new(&cfg)
@@ -2421,6 +2574,8 @@ mod tests {
                 .max_tx_size(MAX_TX_SIZE)
                 .coins_per_utxo_word(&to_bignum(1))
                 .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
+                .collateral_percentage(150)
+                .max_collateral_inputs(3)
                 .build()
                 .unwrap(),
         )
@@ -4755,6 +4910,8 @@ mod tests {
             .max_tx_size(9999)
             .coins_per_utxo_word(&Coin::zero())
             .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
+            .collateral_percentage(150)
+            .max_collateral_inputs(3)
             .build()
             .unwrap();
         let mut tx_builder = TransactionBuilder::new(&cfg);
@@ -4795,6 +4952,8 @@ mod tests {
             .max_tx_size(9999)
             .coins_per_utxo_word(&Coin::zero())
             .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
+            .collateral_percentage(150)
+            .max_collateral_inputs(3)
             .build()
             .unwrap();
         let mut tx_builder = TransactionBuilder::new(&cfg);
@@ -5166,6 +5325,8 @@ mod tests {
                 .max_tx_size(MAX_TX_SIZE)
                 .coins_per_utxo_word(&to_bignum(1))
                 .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
+                .collateral_percentage(150)
+                .max_collateral_inputs(3)
                 .build()
                 .unwrap(),
         );
