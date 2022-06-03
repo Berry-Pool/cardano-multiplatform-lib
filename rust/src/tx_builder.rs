@@ -516,9 +516,9 @@ impl TransactionBuilder {
 
         /* The remaining amount that needs to be filled with the available inputs */
         let output_target = output_total.clamped_sub(&input_total);
-        if output_target.is_zero() {
-            return Ok(());
-        }
+        // if output_target.is_zero() {
+        //     return Ok(());
+        // }
 
         use rand::Rng;
         use std::cmp;
@@ -617,7 +617,7 @@ impl TransactionBuilder {
             let ideal = if target.coin > to_bignum(2500000) {
                 from_bignum(&target.coin) * 2
             } else {
-                from_bignum(&target.coin) * 4
+                cmp::max(from_bignum(&target.coin), 1000000) * 4
             };
 
             let input_value = inputs.iter().fold(Value::zero(), |acc, utxo| {
@@ -659,7 +659,7 @@ impl TransactionBuilder {
                 -current_ideal * 1000.0
             };
 
-            /* Normalize the asset length through the max possibly asset length (that's an estimate) */
+            /* Normalize the asset length through the max possible asset length (that's an estimate) */
             let asset_len = input_assets.len() as f64 / 1000.0;
 
             let weight_assets = if is_plutus {
@@ -773,6 +773,9 @@ impl TransactionBuilder {
             */
             for action in 0..=2 {
                 if action == 0 {
+                    if current_inputs.len() <= 0 {
+                        continue;
+                    }
                     let mut current_inputs_check = current_inputs.clone();
                     let index = rand::thread_rng().gen_range(0..relevant_inputs.len());
                     let index2 = rand::thread_rng().gen_range(0..current_inputs_check.len());
@@ -827,6 +830,9 @@ impl TransactionBuilder {
                         break;
                     }
                 } else {
+                    if current_inputs.len() <= 0 {
+                        continue;
+                    }
                     let mut current_inputs_check = current_inputs.clone();
                     let index = rand::thread_rng().gen_range(0..current_inputs_check.len());
                     let utxo = current_inputs_check[index].clone();
@@ -2172,11 +2178,6 @@ impl TransactionBuilder {
         }
     }
 
-    // TODO
-    // fn calculate_collateral(&self) -> Result<((), JsError> {
-    //     Ok(())
-    // }
-
     // returns the new fee
     fn update_fee_and_balance(&mut self) -> Result<BigNum, JsError> {
         let mut old_fee = self.fee.clone().unwrap();
@@ -2188,6 +2189,9 @@ impl TransactionBuilder {
         // we run in a loop to make 100% sure that adding to fee field and subtracting from output does not change bytes length
         // if it does we loop again and adjust accordingly
         while old_fee < new_fee {
+            if self.change_outputs.len() <= 0 {
+                return Err(JsError::from_str("Not enough ADA leftover to cover fees"));
+            }
             let index = self.change_outputs.len() - 1;
             let change_output = &mut self.change_outputs.0[index];
 
@@ -2218,13 +2222,14 @@ impl TransactionBuilder {
 
             self.set_fee(&new_fee);
 
-            old_fee = self.fee.clone().unwrap();
+            old_fee = new_fee.clone();
             new_fee = min_fee(self)?;
         }
 
         Ok(new_fee)
     }
 
+    // returns the new total collateral
     fn update_collateral_and_balance(
         &mut self,
         collateral: &Vec<TxBuilderInput>,
@@ -2233,10 +2238,12 @@ impl TransactionBuilder {
         let mut old_total_col = self
             .fee
             .unwrap()
-            .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?;
+            .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?
+            .checked_div(&to_bignum(100))?;
         let mut new_total_col = self
             .update_fee_and_balance()?
-            .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?;
+            .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?
+            .checked_div(&to_bignum(100))?;
 
         if old_total_col >= new_total_col {
             return Ok(old_total_col);
@@ -2249,7 +2256,7 @@ impl TransactionBuilder {
         let get_collateral_return = |input_value: &Value, total_col: &BigNum| {
             TransactionOutput::new(
                 &collateral_change_address,
-                &input_value.checked_sub(&Value::new(&total_col)).unwrap(),
+                &input_value.clamped_sub(&Value::new(&total_col)),
             )
         };
 
@@ -2277,13 +2284,11 @@ impl TransactionBuilder {
 
             self.collateral_return = Some(collateral_return.clone());
 
-            old_total_col = self
-                .fee
-                .unwrap()
-                .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?;
+            old_total_col = new_total_col.clone();
             new_total_col = self
                 .update_fee_and_balance()?
-                .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?;
+                .checked_mul(&to_bignum(self.config.collateral_percentage as u64))?
+                .checked_div(&to_bignum(100))?;
         }
         Ok(new_total_col)
     }
@@ -2641,6 +2646,14 @@ mod tests {
 
         let mut tx_builder = create_reallistic_tx_builder();
 
+        tx_builder.add_input(
+            &TransactionUnspentOutput::new(
+                &TransactionInput::new(&genesis_id(), &1.into()),
+                &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(900999))),
+            ),
+            None,
+        );
+
         let input_value = Value::new_from_assets(&ma);
 
         let mut utxo = TransactionUnspentOutput::new(
@@ -2652,7 +2665,7 @@ mod tests {
             min_ada_required(&utxo.output, &tx_builder.config.coins_per_utxo_word).unwrap();
 
         let mut utxos = TransactionUnspentOutputs::new();
-        utxos.add(&utxo);
+        // utxos.add(&utxo);
 
         // utxos.add(&TransactionUnspentOutput::new(
         //     &TransactionInput::new(&genesis_id(), &1.into()),
@@ -2661,7 +2674,7 @@ mod tests {
 
         utxos.add(&TransactionUnspentOutput::new(
             &TransactionInput::new(&genesis_id(), &2.into()),
-            &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(2_300_000))),
+            &TransactionOutput::new(&addr_net_0, &Value::new(&to_bignum(10_000_000))),
         ));
 
         // utxos.add(&TransactionUnspentOutput::new(
@@ -2708,12 +2721,12 @@ mod tests {
         //     .add_output(&TransactionOutput::new(&addr_net_0, &i_v))
         //     .unwrap();
 
-        tx_builder
-            .add_output(&TransactionOutput::new(
-                &addr_net_0,
-                &Value::new(&to_bignum(1000000)),
-            ))
-            .unwrap();
+        // tx_builder
+        //     .add_output(&TransactionOutput::new(
+        //         &addr_net_0,
+        //         &Value::new(&to_bignum(1000000)),
+        //     ))
+        //     .unwrap();
 
         tx_builder.add_inputs_from(&utxos).unwrap();
         tx_builder.balance(&addr_net_0, None).unwrap();
@@ -4762,7 +4775,7 @@ mod tests {
             .unwrap();
 
         let mut available_inputs = TransactionUnspentOutputs::new();
-        available_inputs.add(&make_input(0u8, Value::new(&to_bignum(150))));
+        available_inputs.add(&make_input(0u8, Value::new(&to_bignum(1000))));
 
         let mut input1 = make_input(1u8, Value::new(&to_bignum(200)));
         let mut ma1 = MultiAsset::new();
@@ -4825,7 +4838,7 @@ mod tests {
         tx_builder.balance(&change_addr, None).unwrap();
         let tx = tx_builder.build().unwrap();
 
-        assert_eq!(2, tx.outputs().len());
+        assert_eq!(3, tx.outputs().len());
 
         let input_total = tx_builder.get_explicit_input().unwrap();
         assert!(input_total >= output_value);
