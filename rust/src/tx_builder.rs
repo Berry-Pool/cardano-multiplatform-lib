@@ -2421,6 +2421,9 @@ impl TransactionBuilder {
         if let Some(redeemers) = self.redeemers.as_ref() {
             wit.set_redeemers(redeemers);
         }
+        if let Some(scripts) = self.plutus_v2_scripts.as_ref() {
+            wit.set_plutus_v2_scripts(scripts);
+        }
         wit
     }
 
