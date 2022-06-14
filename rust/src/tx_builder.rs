@@ -2034,14 +2034,14 @@ impl TransactionBuilder {
                 true => {
                     /* Get the used plutus versions from script hashes */
                     let mut used_plutus_versions: HashSet<Language> = HashSet::new();
-                    for script_hash in self.input_types.scripts.iter() {
+                    for script_hash in &self.input_types.scripts {
                         if let Some(v) = self.plutus_versions.get(&script_hash) {
                             used_plutus_versions.insert(v.clone());
                         }
                     }
 
                     let mut required_costmdls = Costmdls::new();
-                    for plutus_version in used_plutus_versions.iter() {
+                    for plutus_version in &used_plutus_versions {
                         required_costmdls.insert(
                             &plutus_version,
                             &self
