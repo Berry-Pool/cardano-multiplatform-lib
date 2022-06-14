@@ -5,7 +5,7 @@ use super::output_builder::TransactionOutputAmountBuilder;
 use super::utils;
 use super::*;
 use crate::{tx_builder_utils::*, witness_builder::RedeemerWitnessKey};
-use std::collections::{BTreeMap, BTreeSet, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 
 // comes from witsVKeyNeeded in the Ledger spec
 fn witness_keys_for_cert(
@@ -464,7 +464,7 @@ pub struct TransactionBuilder {
     total_collateral: Option<Coin>,
     reference_inputs: Option<TransactionInputs>,
     plutus_v2_scripts: Option<PlutusScripts>,
-    plutus_versions: HashSet<Language>, // versions part of the tx determined through looking at added scripts
+    plutus_versions: HashMap<ScriptHash, Language>, // versions part of the tx determined through looking at added scripts
 }
 
 #[wasm_bindgen]
@@ -986,10 +986,22 @@ impl TransactionBuilder {
         match &utxo.output.script_ref {
             Some(sr) => match sr.get().kind() {
                 ScriptKind::PlutusScriptV1 => {
-                    self.plutus_versions.insert(Language::new_plutus_v1());
+                    let script_hash = sr
+                        .get()
+                        .as_plutus_v1()
+                        .unwrap()
+                        .hash(ScriptHashNamespace::PlutusV1);
+                    self.plutus_versions
+                        .insert(script_hash, Language::new_plutus_v1());
                 }
                 ScriptKind::PlutusScriptV2 => {
-                    self.plutus_versions.insert(Language::new_plutus_v2());
+                    let script_hash = sr
+                        .get()
+                        .as_plutus_v2()
+                        .unwrap()
+                        .hash(ScriptHashNamespace::PlutusV2);
+                    self.plutus_versions
+                        .insert(script_hash, Language::new_plutus_v2());
                 }
                 ScriptKind::NativeScript => (),
             },
@@ -1058,10 +1070,22 @@ impl TransactionBuilder {
         match &utxo.output.script_ref {
             Some(sr) => match sr.get().kind() {
                 ScriptKind::PlutusScriptV1 => {
-                    self.plutus_versions.insert(Language::new_plutus_v1());
+                    let script_hash = sr
+                        .get()
+                        .as_plutus_v1()
+                        .unwrap()
+                        .hash(ScriptHashNamespace::PlutusV1);
+                    self.plutus_versions
+                        .insert(script_hash, Language::new_plutus_v1());
                 }
                 ScriptKind::PlutusScriptV2 => {
-                    self.plutus_versions.insert(Language::new_plutus_v2());
+                    let script_hash = sr
+                        .get()
+                        .as_plutus_v2()
+                        .unwrap()
+                        .hash(ScriptHashNamespace::PlutusV2);
+                    self.plutus_versions
+                        .insert(script_hash, Language::new_plutus_v2());
                 }
                 ScriptKind::NativeScript => (),
             },
@@ -1149,7 +1173,10 @@ impl TransactionBuilder {
         let mut scripts = self.plutus_scripts.clone().unwrap();
         scripts.add(&plutus_script);
         self.plutus_scripts = Some(scripts);
-        self.plutus_versions.insert(Language::new_plutus_v1());
+
+        let script_hash = plutus_script.hash(ScriptHashNamespace::PlutusV1);
+        self.plutus_versions
+            .insert(script_hash, Language::new_plutus_v1());
     }
 
     /// Add plutus v2 scripts via a PlutusScripts object
@@ -1161,7 +1188,10 @@ impl TransactionBuilder {
         let mut scripts = self.plutus_v2_scripts.clone().unwrap();
         scripts.add(&plutus_script);
         self.plutus_v2_scripts = Some(scripts);
-        self.plutus_versions.insert(Language::new_plutus_v2());
+
+        let script_hash = plutus_script.hash(ScriptHashNamespace::PlutusV2);
+        self.plutus_versions
+            .insert(script_hash, Language::new_plutus_v2());
     }
 
     /// Add plutus data via a PlutusData object
@@ -1490,7 +1520,7 @@ impl TransactionBuilder {
             total_collateral: None,
             reference_inputs: None,
             plutus_v2_scripts: None,
-            plutus_versions: HashSet::new(),
+            plutus_versions: HashMap::new(),
         }
     }
 
@@ -1498,7 +1528,7 @@ impl TransactionBuilder {
         self.script_data_hash.clone()
     }
 
-    pub fn add_collateral(&mut self, utxo: &TransactionUnspentOutput) {
+    pub fn add_collateral(&mut self, utxo: &TransactionUnspentOutput) -> Result<(), JsError> {
         if self.collateral.is_none() {
             self.collateral = Some(Vec::new());
         }
@@ -1518,12 +1548,13 @@ impl TransactionBuilder {
                 match &addr.payment_cred().to_keyhash() {
                     Some(hash) => {
                         self.input_types.vkeys.insert(hash.clone());
+                        return Ok(());
                     }
                     None => (),
                 }
                 match &addr.payment_cred().to_scripthash() {
-                    Some(hash) => {
-                        self.input_types.scripts.insert(hash.clone());
+                    Some(_) => {
+                        return Err(JsError::from_str("Only Vkey inputs allowed as collateral."))
                     }
                     None => (),
                 }
@@ -1535,12 +1566,13 @@ impl TransactionBuilder {
                 match &addr.payment_cred().to_keyhash() {
                     Some(hash) => {
                         self.input_types.vkeys.insert(hash.clone());
+                        return Ok(());
                     }
                     None => (),
                 }
                 match &addr.payment_cred().to_scripthash() {
-                    Some(hash) => {
-                        self.input_types.scripts.insert(hash.clone());
+                    Some(_) => {
+                        return Err(JsError::from_str("Only Vkey inputs allowed as collateral."))
                     }
                     None => (),
                 }
@@ -1552,12 +1584,13 @@ impl TransactionBuilder {
                 match &addr.payment_cred().to_keyhash() {
                     Some(hash) => {
                         self.input_types.vkeys.insert(hash.clone());
+                        return Ok(());
                     }
                     None => (),
                 }
                 match &addr.payment_cred().to_scripthash() {
-                    Some(hash) => {
-                        self.input_types.scripts.insert(hash.clone());
+                    Some(_) => {
+                        return Err(JsError::from_str("Only Vkey inputs allowed as collateral."))
                     }
                     None => (),
                 }
@@ -1567,9 +1600,11 @@ impl TransactionBuilder {
         match &ByronAddress::from_address(address) {
             Some(addr) => {
                 self.input_types.bootstraps.insert(addr.to_bytes());
+                return Ok(());
             }
             None => (),
         }
+        Ok(())
     }
 
     pub fn get_collateral(&self) -> Option<TransactionInputs> {
@@ -1997,8 +2032,16 @@ impl TransactionBuilder {
             script_data_hash: match self.redeemers.is_some() || self.plutus_data.is_some() {
                 false => None,
                 true => {
+                    /* Get the used plutus versions from script hashes */
+                    let mut used_plutus_versions: HashSet<Language> = HashSet::new();
+                    for script_hash in self.input_types.scripts.iter() {
+                        if let Some(v) = self.plutus_versions.get(&script_hash) {
+                            used_plutus_versions.insert(v.clone());
+                        }
+                    }
+
                     let mut required_costmdls = Costmdls::new();
-                    for plutus_version in &self.plutus_versions {
+                    for plutus_version in used_plutus_versions.iter() {
                         required_costmdls.insert(
                             &plutus_version,
                             &self
