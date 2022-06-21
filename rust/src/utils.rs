@@ -280,6 +280,21 @@ impl BigNum {
         }
     }
 
+    pub fn checked_div_ceil(&self, other: &BigNum) -> Result<BigNum, JsError> {
+        if other.0 <= 0 {
+            return Err(JsError::from_str("underflow"));
+        }
+        match self
+            .0
+            .checked_add(other.0.checked_sub(1).unwrap())
+            .unwrap()
+            .checked_div(other.0)
+        {
+            Some(value) => Ok(BigNum(value)),
+            None => Err(JsError::from_str("underflow")),
+        }
+    }
+
     /// returns 0 if it would otherwise underflow
     pub fn clamped_sub(&self, other: &BigNum) -> BigNum {
         match self.0.checked_sub(other.0) {
