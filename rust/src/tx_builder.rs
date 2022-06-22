@@ -2518,7 +2518,7 @@ mod tests {
     const MAX_VALUE_SIZE: u32 = 4000;
     const MAX_TX_SIZE: u32 = 8000; // might be out of date but suffices for our tests
                                    // this is what is used in mainnet
-    static COINS_PER_UTXO_WORD: u64 = 34_482;
+    static COINS_PER_UTXO_WORD: u64 = 4310;
 
     fn genesis_id() -> TransactionHash {
         TransactionHash::from([0u8; TransactionHash::BYTE_COUNT])
@@ -5984,7 +5984,7 @@ mod tests {
 
         assert_eq!(out.address.to_bytes(), address.to_bytes());
         assert_eq!(out.amount.multiasset.unwrap(), multiasset);
-        assert_eq!(out.amount.coin, to_bignum(1094994));
+        assert_eq!(out.amount.coin, to_bignum(1094740));
     }
 
     #[test]

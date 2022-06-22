@@ -1608,7 +1608,7 @@ mod tests {
     use super::*;
 
     // this is what is used in mainnet
-    const COINS_PER_UTXO_WORD: u64 = 34_482;
+    const COINS_PER_UTXO_WORD: u64 = 4310;
 
     fn test_output() -> TransactionOutput {
         fn harden(index: u32) -> u32 {
@@ -1748,7 +1748,7 @@ mod tests {
         let check_output = test_output();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            978597,
+            978370,
         );
     }
 
@@ -1758,7 +1758,7 @@ mod tests {
         check_output.amount = one_policy_one_0_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1129482,
+            1129220,
         );
     }
 
@@ -1768,7 +1768,7 @@ mod tests {
         check_output.amount = one_policy_one_1_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1133793,
+            1133530,
         );
     }
 
@@ -1778,7 +1778,7 @@ mod tests {
         check_output.amount = one_policy_three_1_char_assets();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1159659,
+            1159390,
         );
     }
 
@@ -1788,7 +1788,7 @@ mod tests {
         check_output.amount = two_policies_one_0_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1271745,
+            1271450,
         );
     }
 
@@ -1798,7 +1798,7 @@ mod tests {
         check_output.amount = two_policies_one_1_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1280367,
+            1280070,
         );
     }
 
@@ -1808,7 +1808,7 @@ mod tests {
         check_output.amount = three_policies_96_1_char_assets();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            2642643,
+            2642030,
         );
     }
 
@@ -1818,7 +1818,7 @@ mod tests {
         check_output.amount = one_policy_one_0_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1129482,
+            1129220,
         );
     }
 
@@ -1828,7 +1828,7 @@ mod tests {
         check_output.amount = one_policy_three_32_char_assets();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1573515,
+            1573150,
         );
     }
 
@@ -1838,7 +1838,7 @@ mod tests {
         check_output.amount = two_policies_one_0_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1271745,
+            1271450,
         );
     }
 
