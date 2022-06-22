@@ -1400,10 +1400,8 @@ pub(crate) fn hash_script(namespace: ScriptHashNamespace, script: Vec<u8>) -> Sc
 #[wasm_bindgen]
 pub fn min_ada_required(
     output: &TransactionOutput,
-    coins_per_utxo_word: &BigNum, // protocol parameter (in lovelace)
+    coins_per_utxo_byte: &BigNum, // protocol parameter (in lovelace)
 ) -> Result<BigNum, JsError> {
-    let coins_per_utxo_byte =
-        (coins_per_utxo_word.checked_add(&to_bignum(7))?).checked_div(&to_bignum(8))?;
     let constant_overhead = 160 as u64;
 
     // we calculate min ada twice. we need to calculate it a second time to make sure the the added min ada to the output does also not exceed the min ada requirement itself
