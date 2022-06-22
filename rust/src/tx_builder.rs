@@ -44,6 +44,7 @@ fn witness_keys_for_cert(
                             }
                             tx_builder.input_types.scripts.insert(hash.clone());
                         }
+                        tx_builder.used_plutus_scripts.insert(hash.clone());
                     }
                 }
             }
@@ -82,6 +83,7 @@ fn witness_keys_for_cert(
                             }
                             tx_builder.input_types.scripts.insert(hash.clone());
                         }
+                        tx_builder.used_plutus_scripts.insert(hash.clone());
                     }
                 }
             }
@@ -464,6 +466,7 @@ pub struct TransactionBuilder {
     total_collateral: Option<Coin>,
     reference_inputs: Option<TransactionInputs>,
     plutus_v2_scripts: Option<PlutusScripts>,
+    used_plutus_scripts: HashSet<ScriptHash>, // collect script hashes from inputs, mints, certs and withdrawals
     plutus_versions: HashMap<ScriptHash, Language>, // versions part of the tx determined through looking at added scripts
 }
 
@@ -931,7 +934,13 @@ impl TransactionBuilder {
                         }
                         self.input_types.scripts.insert(hash.clone());
                     }
-                    self.add_plutus_data(&plutus_witness.plutus_data().clone().unwrap());
+
+                    self.used_plutus_scripts.insert(hash.clone());
+
+                    // we don't need plutus data here if datum is inline, only needed if used as hash
+                    if let Some(d) = plutus_witness.plutus_data() {
+                        self.add_plutus_data(&d);
+                    }
 
                     self.inputs.push(TxBuilderInput {
                         input: utxo.input.clone(),
@@ -1319,6 +1328,8 @@ impl TransactionBuilder {
                             }
                             self.input_types.scripts.insert(hash.clone());
                         }
+                        self.used_plutus_scripts.insert(hash.clone());
+
                         Some(Redeemer::new(
                             &RedeemerTag::new_reward(),
                             &to_bignum(0), // will point to correct input when finalizing txBuilder
@@ -1454,6 +1465,8 @@ impl TransactionBuilder {
 
                         self.input_types.scripts.insert(policy_id.clone());
                     }
+                    self.used_plutus_scripts.insert(policy_id.clone());
+
                     Some(Redeemer::new(
                         &RedeemerTag::new_mint(),
                         &to_bignum(0), // will point to correct input when finalizing txBuilder
@@ -1520,6 +1533,7 @@ impl TransactionBuilder {
             total_collateral: None,
             reference_inputs: None,
             plutus_v2_scripts: None,
+            used_plutus_scripts: HashSet::new(),
             plutus_versions: HashMap::new(),
         }
     }
@@ -2033,15 +2047,15 @@ impl TransactionBuilder {
                 false => None,
                 true => {
                     /* Get the used plutus versions from script hashes */
-                    let mut used_plutus_versions: HashSet<Language> = HashSet::new();
-                    for script_hash in &self.input_types.scripts {
+                    let mut used_versions: HashSet<Language> = HashSet::new();
+                    for script_hash in &self.used_plutus_scripts {
                         if let Some(v) = self.plutus_versions.get(&script_hash) {
-                            used_plutus_versions.insert(v.clone());
+                            used_versions.insert(v.clone());
                         }
                     }
 
                     let mut required_costmdls = Costmdls::new();
-                    for plutus_version in &used_plutus_versions {
+                    for plutus_version in &used_versions {
                         required_costmdls.insert(
                             &plutus_version,
                             &self

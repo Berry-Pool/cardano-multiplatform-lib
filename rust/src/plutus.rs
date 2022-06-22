@@ -1376,7 +1376,7 @@ impl cbor_event::se::Serialize for Script {
                 plutus_script.serialize(serializer)
             }
             ScriptEnum::PlutusScriptV2(plutus_script) => {
-                serializer.write_unsigned_integer(1u64)?;
+                serializer.write_unsigned_integer(2u64)?;
                 plutus_script.serialize(serializer)
             }
         }
