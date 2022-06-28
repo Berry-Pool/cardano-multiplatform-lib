@@ -286,7 +286,7 @@ pub struct TransactionBuilderConfig {
     key_deposit: BigNum,          // protocol parameter
     max_value_size: u32,          // protocol parameter
     max_tx_size: u32,             // protocol parameter
-    coins_per_utxo_word: Coin,    // protocol parameter
+    coins_per_utxo_byte: Coin,    // protocol parameter
     ex_unit_prices: ExUnitPrices, // protocol parameter
     costmdls: Costmdls,           // protocol parameter
     collateral_percentage: u32,   // protocol parameter
@@ -302,7 +302,7 @@ pub struct TransactionBuilderConfigBuilder {
     key_deposit: Option<BigNum>,          // protocol parameter
     max_value_size: Option<u32>,          // protocol parameter
     max_tx_size: Option<u32>,             // protocol parameter
-    coins_per_utxo_word: Option<Coin>,    // protocol parameter
+    coins_per_utxo_byte: Option<Coin>,    // protocol parameter
     ex_unit_prices: Option<ExUnitPrices>, // protocol parameter
     costmdls: Option<Costmdls>,           // protocol parameter
     collateral_percentage: Option<u32>,   // protocol parameter
@@ -319,7 +319,7 @@ impl TransactionBuilderConfigBuilder {
             key_deposit: None,
             max_value_size: None,
             max_tx_size: None,
-            coins_per_utxo_word: None,
+            coins_per_utxo_byte: None,
             ex_unit_prices: None,
             costmdls: None,
             collateral_percentage: None,
@@ -334,9 +334,9 @@ impl TransactionBuilderConfigBuilder {
         cfg
     }
 
-    pub fn coins_per_utxo_word(&self, coins_per_utxo_word: &Coin) -> Self {
+    pub fn coins_per_utxo_byte(&self, coins_per_utxo_byte: &Coin) -> Self {
         let mut cfg = self.clone();
-        cfg.coins_per_utxo_word = Some(coins_per_utxo_word.clone());
+        cfg.coins_per_utxo_byte = Some(coins_per_utxo_byte.clone());
         cfg
     }
 
@@ -412,8 +412,8 @@ impl TransactionBuilderConfigBuilder {
             max_tx_size: cfg
                 .max_tx_size
                 .ok_or(JsError::from_str("uninitialized field: max_tx_size"))?,
-            coins_per_utxo_word: cfg.coins_per_utxo_word.ok_or(JsError::from_str(
-                "uninitialized field: coins_per_utxo_word",
+            coins_per_utxo_byte: cfg.coins_per_utxo_byte.ok_or(JsError::from_str(
+                "uninitialized field: coins_per_utxo_byte",
             ))?,
             ex_unit_prices: cfg
                 .ex_unit_prices
@@ -478,7 +478,7 @@ impl TransactionBuilder {
     /// Adding a change output must be called after via TransactionBuilder::balance()
     /// inputs to cover the minimum fees. This does not, however, set the txbuilder's fee.
     pub fn add_inputs_from(&mut self, inputs: &TransactionUnspentOutputs) -> Result<(), JsError> {
-        let coins_per_utxo_word = self.config.coins_per_utxo_word.clone();
+        let coins_per_utxo_byte = self.config.coins_per_utxo_byte.clone();
 
         let input_total = self.get_total_input()?;
         let mut output_total = self
@@ -491,7 +491,7 @@ impl TransactionBuilder {
                 TransactionOutput::new(&inputs.get(0).output.address, &change_total);
             check_output.amount.coin = to_bignum(0);
             /* Adding extra min ada to mint value, which is just change right now, but needs to have a minimum amount of ADA when added to an output */
-            let min_ada = min_ada_required(&check_output, &coins_per_utxo_word)?;
+            let min_ada = min_ada_required(&check_output, &coins_per_utxo_byte)?;
             if min_ada >= change_total.coin {
                 let change_to_add = min_ada.checked_sub(&change_total.coin)?;
                 output_total = output_total
@@ -556,7 +556,7 @@ impl TransactionBuilder {
                     value
                         .coin
                         .checked_sub(
-                            &min_ada_required(&check_output, &coins_per_utxo_word).unwrap(),
+                            &min_ada_required(&check_output, &coins_per_utxo_byte).unwrap(),
                         )
                         .unwrap_or(to_bignum(0))
                 }
@@ -1130,7 +1130,7 @@ impl TransactionBuilder {
     pub fn add_output(&mut self, output: &TransactionOutput) -> Result<(), JsError> {
         let mut_output = &mut output.clone();
 
-        let min_ada = min_ada_required(&output, &self.config.coins_per_utxo_word)?;
+        let min_ada = min_ada_required(&output, &self.config.coins_per_utxo_byte)?;
         if mut_output.amount().coin() < min_ada {
             mut_output.amount.coin = min_ada;
             // return Err(JsError::from_str(&format!(
@@ -1160,7 +1160,7 @@ impl TransactionBuilder {
                 self.config.max_value_size, value_size
             )));
         }
-        let min_ada = min_ada_required(&output, &self.config.coins_per_utxo_word)?;
+        let min_ada = min_ada_required(&output, &self.config.coins_per_utxo_byte)?;
         if output.amount().coin() < min_ada {
             Err(JsError::from_str(&format!(
                 "Value {} less than the minimum UTXO value {}",
@@ -1885,7 +1885,7 @@ impl TransactionBuilder {
                         if check_amount.to_bytes().len() > self.config.max_value_size as usize {
                             change_output.amount.coin = to_bignum(0);
                             change_output.amount.coin =
-                                min_ada_required(&change_output, &self.config.coins_per_utxo_word)?;
+                                min_ada_required(&change_output, &self.config.coins_per_utxo_byte)?;
 
                             let fee_for_change = self.fee_for_output(&change_output)?;
                             fee = fee.checked_add(&fee_for_change)?;
@@ -1923,7 +1923,7 @@ impl TransactionBuilder {
                     change_output_0.amount.coin = to_bignum(0);
                     let change_value_0 = Value::new(&min_ada_required(
                         &change_output_0,
-                        &tx_builder.config.coins_per_utxo_word,
+                        &tx_builder.config.coins_per_utxo_byte,
                     )?);
                     change_output_0.amount.coin = change_value_0.coin;
                     change_total_check = change_total_check.checked_sub(&change_output_0.amount)?;
@@ -1943,7 +1943,7 @@ impl TransactionBuilder {
                     if change_output_1.amount.coin
                         < min_ada_required(
                             &change_output_1,
-                            &tx_builder.config.coins_per_utxo_word,
+                            &tx_builder.config.coins_per_utxo_byte,
                         )?
                     {
                         return Err(JsError::from_str("Not enough ADA leftover to cover minADA"));
@@ -1975,7 +1975,7 @@ impl TransactionBuilder {
                     if change_output_0.amount.coin
                         < min_ada_required(
                             &change_output_0,
-                            &tx_builder.config.coins_per_utxo_word,
+                            &tx_builder.config.coins_per_utxo_byte,
                         )?
                     {
                         return Err(JsError::from_str("Not enough ADA leftover to cover minADA"));
@@ -2260,14 +2260,14 @@ impl TransactionBuilder {
                 .checked_sub(&Value::new(&amount_to_subtract))?;
 
             if change_output.amount.coin
-                < min_ada_required(&change_output, &self.config.coins_per_utxo_word)?
+                < min_ada_required(&change_output, &self.config.coins_per_utxo_byte)?
                 && change_output.amount.multiasset.is_some()
             {
                 return Err(JsError::from_str("Not enough ADA leftover to cover fees"));
             }
             // burn whole output
             if change_output.amount.coin
-                < min_ada_required(&change_output, &self.config.coins_per_utxo_word)?
+                < min_ada_required(&change_output, &self.config.coins_per_utxo_byte)?
             {
                 let fee = old_fee
                     .checked_add(&change_output.amount.coin)?
@@ -2322,7 +2322,7 @@ impl TransactionBuilder {
 
             // burn whole return output
             if collateral_return.amount.coin
-                < min_ada_required(&collateral_return, &self.config.coins_per_utxo_word)?
+                < min_ada_required(&collateral_return, &self.config.coins_per_utxo_byte)?
                 && collateral_return.amount.coin >= new_total_col
                 && collateral_return.amount.multiasset.is_none()
             {
@@ -2332,7 +2332,7 @@ impl TransactionBuilder {
             }
 
             if collateral_return.amount.coin
-                < min_ada_required(&collateral_return, &self.config.coins_per_utxo_word)?
+                < min_ada_required(&collateral_return, &self.config.coins_per_utxo_byte)?
             {
                 return Err(JsError::from_str("Not enough ADA leftover to cover fees"));
             }
@@ -2393,7 +2393,7 @@ impl TransactionBuilder {
                             .amount
                             .coin
                             .checked_sub(
-                                &min_ada_required(&output, &self.config.coins_per_utxo_word)
+                                &min_ada_required(&output, &self.config.coins_per_utxo_byte)
                                     .unwrap(),
                             )
                             .unwrap_or(to_bignum(0)),
@@ -2577,7 +2577,7 @@ mod tests {
         pool_deposit: u64,
         key_deposit: u64,
         max_val_size: u32,
-        coins_per_utxo_word: u64,
+        coins_per_utxo_byte: u64,
     ) -> TransactionBuilder {
         let cfg = TransactionBuilderConfigBuilder::new()
             .fee_algo(linear_fee)
@@ -2585,7 +2585,7 @@ mod tests {
             .key_deposit(&to_bignum(key_deposit))
             .max_value_size(max_val_size)
             .max_tx_size(MAX_TX_SIZE)
-            .coins_per_utxo_word(&to_bignum(coins_per_utxo_word))
+            .coins_per_utxo_byte(&to_bignum(coins_per_utxo_byte))
             .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
             .collateral_percentage(150)
             .max_collateral_inputs(3)
@@ -2596,7 +2596,7 @@ mod tests {
 
     fn create_tx_builder(
         linear_fee: &LinearFee,
-        coins_per_utxo_word: u64,
+        coins_per_utxo_byte: u64,
         pool_deposit: u64,
         key_deposit: u64,
     ) -> TransactionBuilder {
@@ -2605,7 +2605,7 @@ mod tests {
             pool_deposit,
             key_deposit,
             MAX_VALUE_SIZE,
-            coins_per_utxo_word,
+            coins_per_utxo_byte,
         )
     }
 
@@ -2637,7 +2637,7 @@ mod tests {
                 .key_deposit(&to_bignum(1))
                 .max_value_size(MAX_VALUE_SIZE)
                 .max_tx_size(MAX_TX_SIZE)
-                .coins_per_utxo_word(&to_bignum(1))
+                .coins_per_utxo_byte(&to_bignum(1))
                 .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
                 .collateral_percentage(150)
                 .max_collateral_inputs(3)
@@ -2722,7 +2722,7 @@ mod tests {
         );
 
         utxo.output.amount.coin =
-            min_ada_required(&utxo.output, &tx_builder.config.coins_per_utxo_word).unwrap();
+            min_ada_required(&utxo.output, &tx_builder.config.coins_per_utxo_byte).unwrap();
 
         let mut utxos = TransactionUnspentOutputs::new();
         // utxos.add(&utxo);
@@ -4981,7 +4981,7 @@ mod tests {
             .key_deposit(&to_bignum(0))
             .max_value_size(9999)
             .max_tx_size(9999)
-            .coins_per_utxo_word(&Coin::zero())
+            .coins_per_utxo_byte(&Coin::zero())
             .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
             .collateral_percentage(150)
             .max_collateral_inputs(3)
@@ -5023,7 +5023,7 @@ mod tests {
             .key_deposit(&to_bignum(0))
             .max_value_size(9999)
             .max_tx_size(9999)
-            .coins_per_utxo_word(&Coin::zero())
+            .coins_per_utxo_byte(&Coin::zero())
             .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
             .collateral_percentage(150)
             .max_collateral_inputs(3)
@@ -5396,7 +5396,7 @@ mod tests {
                 .key_deposit(&to_bignum(0))
                 .max_value_size(max_value_size)
                 .max_tx_size(MAX_TX_SIZE)
-                .coins_per_utxo_word(&to_bignum(1))
+                .coins_per_utxo_byte(&to_bignum(1))
                 .ex_unit_prices(&ExUnitPrices::from_float(0.0, 0.0))
                 .collateral_percentage(150)
                 .max_collateral_inputs(3)
@@ -5962,7 +5962,7 @@ mod tests {
                     .unwrap()
                     .with_asset_and_min_required_coin(
                         &multiasset,
-                        &tx_builder.config.coins_per_utxo_word,
+                        &tx_builder.config.coins_per_utxo_byte,
                     )
                     .unwrap()
                     .build()
