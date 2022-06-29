@@ -157,6 +157,10 @@ fn main() {
     gen_json_schema!(Int);
     gen_json_schema!(Value);
 
+    // Babbage
     gen_json_schema!(Datum);
     gen_json_schema!(ScriptWitness);
+    gen_json_schema!(ScriptRef);
+    gen_json_schema!(Script);
+    gen_json_schema!(Data);
 }
