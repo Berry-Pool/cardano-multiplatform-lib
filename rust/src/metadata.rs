@@ -1003,7 +1003,7 @@ impl cbor_event::se::Serialize for AuxiliaryData {
                 plutus_scripts.serialize(serializer)?;
             }
             if let Some(plutus_v2_scripts) = &self.plutus_v2_scripts {
-                serializer.write_unsigned_integer(2)?;
+                serializer.write_unsigned_integer(3)?;
                 plutus_v2_scripts.serialize(serializer)?;
             }
             Ok(serializer)
@@ -1085,7 +1085,7 @@ impl Deserialize for AuxiliaryData {
                                 3 => {
                                     if plutus_v2_scripts.is_some() {
                                         return Err(
-                                            DeserializeFailure::DuplicateKey(Key::Uint(2)).into()
+                                            DeserializeFailure::DuplicateKey(Key::Uint(3)).into()
                                         );
                                     }
                                     plutus_v2_scripts = Some(
