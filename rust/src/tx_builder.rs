@@ -477,7 +477,13 @@ impl TransactionBuilder {
     /// This should be called after adding all certs/outputs/etc and will be an error otherwise.
     /// Adding a change output must be called after via TransactionBuilder::balance()
     /// inputs to cover the minimum fees. This does not, however, set the txbuilder's fee.
-    pub fn add_inputs_from(&mut self, inputs: &TransactionUnspentOutputs) -> Result<(), JsError> {
+    ///
+    /// change_address is required here in order to determine the min ada requirement precisely
+    pub fn add_inputs_from(
+        &mut self,
+        inputs: &TransactionUnspentOutputs,
+        change_address: &Address,
+    ) -> Result<(), JsError> {
         let coins_per_utxo_byte = self.config.coins_per_utxo_byte.clone();
 
         let input_total = self.get_total_input()?;
@@ -487,8 +493,7 @@ impl TransactionBuilder {
 
         let change_total = input_total.clamped_sub(&output_total);
         if change_total.multiasset().is_some() {
-            let mut check_output =
-                TransactionOutput::new(&inputs.get(0).output.address, &change_total);
+            let mut check_output = TransactionOutput::new(&change_address, &change_total);
             check_output.amount.coin = to_bignum(0);
             /* Adding extra min ada to mint value, which is just change right now, but needs to have a minimum amount of ADA when added to an output */
             let min_ada = min_ada_required(&check_output, &coins_per_utxo_byte)?;
@@ -550,8 +555,7 @@ impl TransactionBuilder {
         let pure_ada = |value: &Value| -> BigNum {
             match &value.multiasset {
                 Some(_) => {
-                    let check_output =
-                        TransactionOutput::new(&inputs.get(0).output.address, &value);
+                    let check_output = TransactionOutput::new(&change_address, &value);
 
                     value
                         .coin
@@ -795,8 +799,8 @@ impl TransactionBuilder {
                     );
                     if new_cost < current_cost {
                         let old_utxo = current_inputs[index2].clone();
-                        current_value.checked_sub(&old_utxo.output.amount)?;
-                        current_value.checked_add(&utxo.output.amount)?;
+                        current_value = current_value.checked_sub(&old_utxo.output.amount)?;
+                        current_value = current_value.checked_add(&utxo.output.amount)?;
                         current_inputs = current_inputs_check;
                         relevant_inputs[index] = old_utxo.clone();
                         current_cost = new_cost;
@@ -817,7 +821,7 @@ impl TransactionBuilder {
                         is_plutus,
                     );
                     if new_cost < current_cost {
-                        current_value.checked_add(&utxo.output.amount)?;
+                        current_value = current_value.checked_add(&utxo.output.amount)?;
                         current_inputs = current_inputs_check;
 
                         relevant_inputs.swap_remove(index);
@@ -849,7 +853,7 @@ impl TransactionBuilder {
                         is_plutus,
                     );
                     if new_cost < current_cost {
-                        current_value.checked_sub(&utxo.output.amount)?;
+                        current_value = current_value.checked_sub(&utxo.output.amount)?;
                         current_inputs = current_inputs_check;
 
                         output_total =
@@ -1842,7 +1846,11 @@ impl TransactionBuilder {
     /// Make sure to call this function last after setting all other tx-body properties
     /// Editing inputs, outputs, mint, etc. after change been calculated
     /// might cause a mismatch in calculated fee versus the required fee
-    pub fn balance(&mut self, address: &Address, datum: Option<Datum>) -> Result<(), JsError> {
+    pub fn balance(
+        &mut self,
+        change_address: &Address,
+        datum: Option<Datum>,
+    ) -> Result<(), JsError> {
         let mut fee = self.min_fee().unwrap();
 
         let input_total = self.get_total_input()?;
@@ -1860,7 +1868,7 @@ impl TransactionBuilder {
 
                 /* We set change_total.coin here as amount to make sure we can don't exceed the max val size by a few bytes */
                 let mut change_output = TransactionOutput {
-                    address: address.clone(),
+                    address: change_address.clone(),
                     amount: Value::new(&change_total.coin).clone(),
                     datum: datum.clone(),
                     script_ref: None,
@@ -2788,7 +2796,7 @@ mod tests {
         //     ))
         //     .unwrap();
 
-        tx_builder.add_inputs_from(&utxos).unwrap();
+        tx_builder.add_inputs_from(&utxos, &addr_net_0).unwrap();
         tx_builder.balance(&addr_net_0, None).unwrap();
 
         let tx = tx_builder.build_tx().unwrap();
@@ -4635,12 +4643,14 @@ mod tests {
         available_inputs.add(&make_input(2u8, Value::new(&to_bignum(800))));
         available_inputs.add(&make_input(3u8, Value::new(&to_bignum(400))));
         available_inputs.add(&make_input(4u8, Value::new(&to_bignum(100))));
-        tx_builder.add_inputs_from(&available_inputs).unwrap();
         let change_addr = ByronAddress::from_base58(
             "Ae2tdPwUPEZGUEsuMAhvDcy94LKsZxDjCbgaiBBMgYpR8sKf96xJmit7Eho",
         )
         .unwrap()
         .to_address();
+        tx_builder
+            .add_inputs_from(&available_inputs, &change_addr)
+            .unwrap();
         tx_builder.balance(&change_addr, None).unwrap();
         let tx = tx_builder.build().unwrap();
         // change needed
@@ -4679,12 +4689,14 @@ mod tests {
         available_inputs.add(&make_input(2u8, Value::new(&to_bignum(800))));
         available_inputs.add(&make_input(3u8, Value::new(&to_bignum(400))));
         available_inputs.add(&make_input(4u8, Value::new(&to_bignum(100))));
-        tx_builder.add_inputs_from(&available_inputs).unwrap();
         let change_addr = ByronAddress::from_base58(
             "Ae2tdPwUPEZGUEsuMAhvDcy94LKsZxDjCbgaiBBMgYpR8sKf96xJmit7Eho",
         )
         .unwrap()
         .to_address();
+        tx_builder
+            .add_inputs_from(&available_inputs, &change_addr)
+            .unwrap();
         tx_builder.balance(&change_addr, None).unwrap();
         let tx = tx_builder.build().unwrap();
         // change not needed - should be exact
@@ -4772,12 +4784,14 @@ mod tests {
 
         // should not be taken
         available_inputs.add(&make_input(7u8, Value::new(&to_bignum(100))));
-        tx_builder.add_inputs_from(&available_inputs).unwrap();
         let change_addr = ByronAddress::from_base58(
             "Ae2tdPwUPEZGUEsuMAhvDcy94LKsZxDjCbgaiBBMgYpR8sKf96xJmit7Eho",
         )
         .unwrap()
         .to_address();
+        tx_builder
+            .add_inputs_from(&available_inputs, &change_addr)
+            .unwrap();
         tx_builder.balance(&change_addr, None).unwrap();
         let tx = tx_builder.build().unwrap();
 
@@ -4889,12 +4903,14 @@ mod tests {
         input9.output.amount.multiasset = Some(ma9);
         available_inputs.add(&input9);
 
-        tx_builder.add_inputs_from(&available_inputs).unwrap();
         let change_addr = ByronAddress::from_base58(
             "Ae2tdPwUPEZGUEsuMAhvDcy94LKsZxDjCbgaiBBMgYpR8sKf96xJmit7Eho",
         )
         .unwrap()
         .to_address();
+        tx_builder
+            .add_inputs_from(&available_inputs, &change_addr)
+            .unwrap();
         tx_builder.balance(&change_addr, None).unwrap();
         let tx = tx_builder.build().unwrap();
 
@@ -4933,13 +4949,13 @@ mod tests {
         available_inputs.add(&make_input(4u8, Value::new(&to_bignum(1000))));
         available_inputs.add(&make_input(5u8, Value::new(&to_bignum(2000))));
         available_inputs.add(&make_input(6u8, Value::new(&to_bignum(1500))));
-        let add_inputs_res = tx_builder.add_inputs_from(&available_inputs);
-        assert!(add_inputs_res.is_ok(), "{:?}", add_inputs_res.err());
         let change_addr = ByronAddress::from_base58(
             "Ae2tdPwUPEZGUEsuMAhvDcy94LKsZxDjCbgaiBBMgYpR8sKf96xJmit7Eho",
         )
         .unwrap()
         .to_address();
+        let add_inputs_res = tx_builder.add_inputs_from(&available_inputs, &change_addr);
+        assert!(add_inputs_res.is_ok(), "{:?}", add_inputs_res.err());
         tx_builder.balance(&change_addr, None).unwrap();
         let tx_build_res = tx_builder.build();
         assert!(tx_build_res.is_ok(), "{:?}", tx_build_res.err());
@@ -5008,7 +5024,11 @@ mod tests {
         let mut available_inputs = TransactionUnspentOutputs::new();
         available_inputs.add(&make_input(1u8, Value::new(&to_bignum(800))));
         available_inputs.add(&make_input(2u8, Value::new(&to_bignum(800))));
-        let add_inputs_res = tx_builder.add_inputs_from(&available_inputs);
+        let add_inputs_res = tx_builder.add_inputs_from(
+            &available_inputs,
+            &Address::from_bech32("addr1vyy6nhfyks7wdu3dudslys37v252w2nwhv0fw2nfawemmnqs6l44z")
+                .unwrap(),
+        );
         assert!(add_inputs_res.is_ok(), "{:?}", add_inputs_res.err());
     }
 
@@ -5052,14 +5072,14 @@ mod tests {
         available_inputs.add(&make_input(1u8, Value::new(&to_bignum(150))));
         available_inputs.add(&make_input(2u8, Value::new(&to_bignum(150))));
         available_inputs.add(&make_input(3u8, Value::new(&to_bignum(150))));
-        let add_inputs_res = tx_builder.add_inputs_from(&available_inputs);
-        assert!(add_inputs_res.is_ok(), "{:?}", add_inputs_res.err());
-        assert_eq!(tx_builder.min_fee().unwrap(), to_bignum(264));
         let change_addr = ByronAddress::from_base58(
             "Ae2tdPwUPEZGUEsuMAhvDcy94LKsZxDjCbgaiBBMgYpR8sKf96xJmit7Eho",
         )
         .unwrap()
         .to_address();
+        let add_inputs_res = tx_builder.add_inputs_from(&available_inputs, &change_addr);
+        assert!(add_inputs_res.is_ok(), "{:?}", add_inputs_res.err());
+        assert_eq!(tx_builder.min_fee().unwrap(), to_bignum(264));
         tx_builder.balance(&change_addr, None);
     }
 
