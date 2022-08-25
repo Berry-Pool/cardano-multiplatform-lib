@@ -402,6 +402,8 @@ impl cbor_event::se::Serialize for TransactionBody {
 impl Deserialize for TransactionBody {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         (|| -> Result<_, DeserializeError> {
+            let before = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();
+
             let len = raw.map()?;
             let mut read_len = CBORReadLen::new(len);
             read_len.read_elems(3)?;
@@ -673,7 +675,17 @@ impl Deserialize for TransactionBody {
                 None => return Err(DeserializeFailure::MandatoryFieldMissing(Key::Uint(2)).into()),
             };
             read_len.finish()?;
+
+            let after = raw.as_mut_ref().seek(SeekFrom::Current(0)).unwrap();
+            let bytes_read = (after - before) as usize;
+
+            raw.as_mut_ref().seek(SeekFrom::Start(before)).unwrap();
+            let original_bytes = raw.as_mut_ref().fill_buf().unwrap()[..bytes_read].to_vec();
+            raw.as_mut_ref().consume(bytes_read);
+
             Ok(Self {
+                original_bytes: Some(original_bytes),
+
                 inputs,
                 outputs,
                 fee,
@@ -753,56 +765,56 @@ impl DeserializeEmbeddedGroup for TransactionInput {
     }
 }
 
-// impl cbor_event::se::Serialize for TransactionOutput {
-//     fn serialize<'se, W: Write>(
-//         &self,
-//         serializer: &'se mut Serializer<W>,
-//     ) -> cbor_event::Result<&'se mut Serializer<W>> {
-//         serializer.write_array(cbor_event::Len::Len(if self.datum.is_some() {
-//             3
-//         } else {
-//             2
-//         }))?;
-//         self.address.serialize(serializer)?;
-//         self.amount.serialize(serializer)?;
-//         if let Some(data_hash) = self.datum.as_ref().and_then(|datum| datum.as_data_hash()) {
-//             data_hash.serialize(serializer)?;
-//         }
-//         Ok(serializer)
-//     }
-// }
-
-// post alonzo
-// TODO ENABLE after Babbage
 impl cbor_event::se::Serialize for TransactionOutput {
     fn serialize<'se, W: Write>(
         &self,
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
-        serializer.write_map(cbor_event::Len::Len(
-            2 + match &self.datum {
-                Some(_) => 1,
-                None => 0,
-            } + match &self.script_ref {
-                Some(_) => 1,
-                None => 0,
-            },
-        ))?;
+        if match &self.datum {
+            Some(d) => d.kind() == DatumKind::Hash,
+            None => true,
+        } && self.script_ref.is_none()
+        {
+            // legacy format
 
-        serializer.write_unsigned_integer(0)?;
-        self.address.serialize(serializer)?;
+            serializer.write_array(cbor_event::Len::Len(if self.datum.is_some() {
+                3
+            } else {
+                2
+            }))?;
+            self.address.serialize(serializer)?;
+            self.amount.serialize(serializer)?;
+            if let Some(data_hash) = self.datum.as_ref().and_then(|datum| datum.as_data_hash()) {
+                data_hash.serialize(serializer)?;
+            }
+        } else {
+            // post alonzo
 
-        serializer.write_unsigned_integer(1)?;
-        self.amount.serialize(serializer)?;
+            serializer.write_map(cbor_event::Len::Len(
+                2 + match &self.datum {
+                    Some(_) => 1,
+                    None => 0,
+                } + match &self.script_ref {
+                    Some(_) => 1,
+                    None => 0,
+                },
+            ))?;
 
-        if let Some(datum) = &self.datum {
-            serializer.write_unsigned_integer(2)?;
-            datum.serialize(serializer)?;
-        }
+            serializer.write_unsigned_integer(0)?;
+            self.address.serialize(serializer)?;
 
-        if let Some(script_ref) = &self.script_ref {
-            serializer.write_unsigned_integer(3)?;
-            script_ref.serialize(serializer)?;
+            serializer.write_unsigned_integer(1)?;
+            self.amount.serialize(serializer)?;
+
+            if let Some(datum) = &self.datum {
+                serializer.write_unsigned_integer(2)?;
+                datum.serialize(serializer)?;
+            }
+
+            if let Some(script_ref) = &self.script_ref {
+                serializer.write_unsigned_integer(3)?;
+                script_ref.serialize(serializer)?;
+            }
         }
 
         Ok(serializer)

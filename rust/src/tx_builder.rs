@@ -2033,6 +2033,8 @@ impl TransactionBuilder {
         }
 
         let built = TransactionBody {
+            original_bytes: None,
+
             inputs: TransactionInputs(
                 self.inputs
                     .iter()
@@ -2883,8 +2885,8 @@ mod tests {
                 .checked_add(&Value::new(&tx_builder.get_fee_if_set().unwrap()))
                 .unwrap()
         );
-        assert_eq!(tx_builder.full_size().unwrap(), 289);
-        assert_eq!(tx_builder.output_sizes(), vec![64, 67]);
+        assert_eq!(tx_builder.full_size().unwrap(), 285);
+        assert_eq!(tx_builder.output_sizes(), vec![62, 65]);
         let _final_tx = tx_builder.build(); // just test that it doesn't throw
     }
 
@@ -3110,8 +3112,8 @@ mod tests {
         )
         .to_address();
         tx_builder.balance(&change_addr, None).unwrap();
-        assert_eq!(tx_builder.min_fee().unwrap().to_str(), "215002");
-        assert_eq!(tx_builder.get_fee_if_set().unwrap().to_str(), "215002");
+        assert_eq!(tx_builder.min_fee().unwrap().to_str(), "214002");
+        assert_eq!(tx_builder.get_fee_if_set().unwrap().to_str(), "214002");
         assert_eq!(tx_builder.get_deposit().unwrap().to_str(), "1000000");
         assert_eq!(
             tx_builder
@@ -3270,7 +3272,7 @@ mod tests {
         tx_builder.balance(&change_addr, None).unwrap();
         let final_tx = tx_builder.build().unwrap();
         assert_eq!(final_tx.outputs().len(), 2);
-        assert_eq!(final_tx.outputs().get(1).amount().coin().to_str(), "246");
+        assert_eq!(final_tx.outputs().get(1).amount().coin().to_str(), "248");
     }
 
     #[test]
@@ -3545,7 +3547,7 @@ mod tests {
             .get(1)
             .unwrap()
             .amount();
-        assert_eq!(change.coin(), to_bignum(233));
+        assert_eq!(change.coin(), to_bignum(235));
         assert!(change.multiasset().is_none());
     }
 
@@ -3661,7 +3663,7 @@ mod tests {
             .get(1)
             .unwrap()
             .amount();
-        assert_eq!(change.coin(), to_bignum(333));
+        assert_eq!(change.coin(), to_bignum(335));
         assert!(change.multiasset().is_some());
 
         let change_assets = change.multiasset().unwrap();
@@ -3791,7 +3793,7 @@ mod tests {
                 .unwrap(),
             to_bignum(ma_input1 + ma_input2 - ma_output1)
         );
-        assert_eq!(final_tx.outputs().get(1).amount().coin(), to_bignum(334));
+        assert_eq!(final_tx.outputs().get(1).amount().coin(), to_bignum(336));
     }
 
     #[test]
@@ -3902,7 +3904,7 @@ mod tests {
         tx_builder.balance(&change_addr, None).unwrap();
         let final_tx = tx_builder.build().unwrap();
         assert_eq!(final_tx.outputs().len(), 3);
-        assert_eq!(final_tx.outputs().get(0).amount().coin(), to_bignum(265));
+        assert_eq!(final_tx.outputs().get(0).amount().coin(), to_bignum(263));
         assert_eq!(
             final_tx
                 .outputs()
@@ -3923,7 +3925,7 @@ mod tests {
             final_tx.outputs().get(1).amount().coin(),
             min_coin_for_dirty_change
         );
-        assert_eq!(final_tx.outputs().get(2).amount().coin(), to_bignum(369));
+        assert_eq!(final_tx.outputs().get(2).amount().coin(), to_bignum(373));
         assert_eq!(final_tx.outputs().get(2).amount().multiasset(), None);
     }
 
@@ -5507,8 +5509,8 @@ mod tests {
         assert_eq!(change1.address, change_addr);
         assert_eq!(change1.address, change2.address);
 
-        assert_eq!(change1.amount.coin, to_bignum(276));
-        assert_eq!(change2.amount.coin, to_bignum(293));
+        assert_eq!(change1.amount.coin, to_bignum(274));
+        assert_eq!(change2.amount.coin, to_bignum(297));
 
         assert!(change1.amount.multiasset.is_some());
         assert!(change2.amount.multiasset.is_some());
@@ -6004,7 +6006,7 @@ mod tests {
 
         assert_eq!(out.address.to_bytes(), address.to_bytes());
         assert_eq!(out.amount.multiasset.unwrap(), multiasset);
-        assert_eq!(out.amount.coin, to_bignum(1094740));
+        assert_eq!(out.amount.coin, to_bignum(1086120));
     }
 
     #[test]

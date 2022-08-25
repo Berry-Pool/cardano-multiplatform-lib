@@ -1223,6 +1223,10 @@ pub fn hash_transaction(tx_body: &TransactionBody) -> TransactionHash {
     TransactionHash::from(crypto::blake2b256(tx_body.to_bytes().as_ref()))
 }
 #[wasm_bindgen]
+pub fn hash_transaction_raw(tx_body: Vec<u8>) -> TransactionHash {
+    TransactionHash::from(crypto::blake2b256(tx_body.as_ref()))
+}
+#[wasm_bindgen]
 pub fn hash_plutus_data(plutus_data: &PlutusData) -> DataHash {
     DataHash::from(blake2b256(&plutus_data.to_bytes()))
 }
@@ -1748,7 +1752,7 @@ mod tests {
         let check_output = test_output();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            978370,
+            969750,
         );
     }
 
@@ -1758,7 +1762,7 @@ mod tests {
         check_output.amount = one_policy_one_0_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1129220,
+            1120600,
         );
     }
 
@@ -1768,7 +1772,7 @@ mod tests {
         check_output.amount = one_policy_one_1_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1133530,
+            1124910,
         );
     }
 
@@ -1778,7 +1782,7 @@ mod tests {
         check_output.amount = one_policy_three_1_char_assets();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1159390,
+            1150770,
         );
     }
 
@@ -1788,7 +1792,7 @@ mod tests {
         check_output.amount = two_policies_one_0_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1271450,
+            1262830,
         );
     }
 
@@ -1798,7 +1802,7 @@ mod tests {
         check_output.amount = two_policies_one_1_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1280070,
+            1271450,
         );
     }
 
@@ -1808,7 +1812,7 @@ mod tests {
         check_output.amount = three_policies_96_1_char_assets();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            2642030,
+            2633410,
         );
     }
 
@@ -1818,7 +1822,7 @@ mod tests {
         check_output.amount = one_policy_one_0_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1129220,
+            1120600,
         );
     }
 
@@ -1828,7 +1832,7 @@ mod tests {
         check_output.amount = one_policy_three_32_char_assets();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1573150,
+            1564530,
         );
     }
 
@@ -1838,7 +1842,7 @@ mod tests {
         check_output.amount = two_policies_one_0_char_asset();
         assert_eq!(
             from_bignum(&min_ada_required(&check_output, &to_bignum(COINS_PER_UTXO_WORD)).unwrap()),
-            1271450,
+            1262830,
         );
     }
 

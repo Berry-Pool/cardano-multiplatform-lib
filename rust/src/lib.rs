@@ -249,6 +249,10 @@ pub type RequiredSignersSet = BTreeSet<Ed25519KeyHash>;
 #[wasm_bindgen]
 #[derive(Clone, serde::Serialize, serde::Deserialize, JsonSchema)]
 pub struct TransactionBody {
+    // We should always preserve the original tx body when deserialized as this is NOT canonicized
+    // before computing tx body. So this field stores the original bytes to re-use.
+    original_bytes: Option<Vec<u8>>,
+
     inputs: TransactionInputs,
     outputs: TransactionOutputs,
     fee: Coin,
@@ -263,7 +267,6 @@ pub struct TransactionBody {
     collateral: Option<TransactionInputs>,
     required_signers: Option<RequiredSigners>,
     network_id: Option<NetworkId>,
-    //TODO: babbage
     collateral_return: Option<TransactionOutput>,
     total_collateral: Option<Coin>,
     reference_inputs: Option<TransactionInputs>,
@@ -339,13 +342,6 @@ impl TransactionBody {
         self.mint.clone()
     }
 
-    /// This function returns the mint value of the transaction
-    /// Use `.mint()` instead.
-    #[deprecated(since = "10.0.0", note = "Weird naming. Use `.mint()`")]
-    pub fn multiassets(&self) -> Option<Mint> {
-        self.mint()
-    }
-
     pub fn set_script_data_hash(&mut self, script_data_hash: &ScriptDataHash) {
         self.script_data_hash = Some(script_data_hash.clone())
     }
@@ -409,6 +405,8 @@ impl TransactionBody {
         ttl: Option<Slot>,
     ) -> Self {
         Self {
+            original_bytes: None,
+
             inputs: inputs.clone(),
             outputs: outputs.clone(),
             fee: fee.clone(),
@@ -427,6 +425,10 @@ impl TransactionBody {
             total_collateral: None,
             reference_inputs: None,
         }
+    }
+
+    pub fn raw(&self) -> Option<Vec<u8>> {
+        self.original_bytes.clone()
     }
 }
 
