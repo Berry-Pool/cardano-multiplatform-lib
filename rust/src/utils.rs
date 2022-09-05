@@ -1293,7 +1293,7 @@ pub fn internal_get_implicit_input(
             .0
             .iter()
             .try_fold(to_bignum(0), |acc, ref cert| match &cert.0 {
-                CertificateEnum::PoolRetirement(_cert) => acc.checked_add(&pool_deposit),
+                // CertificateEnum::PoolRetirement(_cert) => acc.checked_add(&pool_deposit), pool deposit can is claimable from reward address after retirement
                 CertificateEnum::StakeDeregistration(_cert) => acc.checked_add(&key_deposit),
                 _ => Ok(acc),
             })?,
@@ -1314,7 +1314,13 @@ pub fn internal_get_deposit(
             .0
             .iter()
             .try_fold(to_bignum(0), |acc, ref cert| match &cert.0 {
-                CertificateEnum::PoolRegistration(_cert) => acc.checked_add(&pool_deposit),
+                CertificateEnum::PoolRegistration(_cert) => {
+                    if let Some(true) = _cert.is_update {
+                        Ok(acc)
+                    } else {
+                        acc.checked_add(&pool_deposit)
+                    }
+                }
                 CertificateEnum::StakeRegistration(_cert) => acc.checked_add(&key_deposit),
                 _ => Ok(acc),
             })?,

@@ -278,6 +278,18 @@ impl PrivateKey {
     pub fn sign(&self, message: &[u8]) -> Ed25519Signature {
         Ed25519Signature(self.0.sign(&message.to_vec()))
     }
+
+    pub fn from_bytes(bytes: &[u8]) -> Result<PrivateKey, JsError> {
+        let mut raw = cbor_event::de::Deserializer::from(std::io::Cursor::new(bytes.clone()));
+        let bytes = raw.bytes().unwrap();
+        PrivateKey::from_normal_bytes(&bytes).or_else(|_| PrivateKey::from_extended_bytes(&bytes))
+    }
+
+    pub fn to_bytes(&self) -> Vec<u8> {
+        let mut serializer = cbor_event::se::Serializer::new_vec();
+        serializer.write_bytes(self.as_bytes()).unwrap();
+        serializer.finalize()
+    }
 }
 
 /// ED25519 key used as public key

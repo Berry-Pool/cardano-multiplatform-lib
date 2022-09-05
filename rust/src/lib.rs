@@ -27,13 +27,13 @@ use wasm_bindgen::prelude::*;
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/Emurgo/cddl-codegen
 
-use cbor_event::Special as CBORSpecial;
 use cbor_event::Type as CBORType;
 use cbor_event::{
     self,
     de::Deserializer,
     se::{Serialize, Serializer},
 };
+use cbor_event::{se, Special as CBORSpecial};
 
 pub mod address;
 pub mod chain_core;
@@ -773,6 +773,10 @@ impl PoolParams {
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
 pub struct PoolRegistration {
+    /// We need this to figure out if someone registers a pool or only updates it.
+    /// So that we know if we need to add the pool deposit or not.
+    is_update: Option<bool>,
+
     pool_params: PoolParams,
 }
 
@@ -789,6 +793,15 @@ impl PoolRegistration {
     pub fn new(pool_params: &PoolParams) -> Self {
         Self {
             pool_params: pool_params.clone(),
+            is_update: None,
+        }
+    }
+
+    pub fn set_is_update(&mut self, update: bool) {
+        if update {
+            self.is_update = Some(update);
+        } else {
+            self.is_update = None;
         }
     }
 }

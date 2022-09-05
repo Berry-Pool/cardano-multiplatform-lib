@@ -1500,7 +1500,10 @@ impl DeserializeEmbeddedGroup for PoolRegistration {
             Ok(PoolParams::deserialize_as_embedded_group(raw, len)?)
         })()
         .map_err(|e| e.annotate("pool_params"))?;
-        Ok(PoolRegistration { pool_params })
+        Ok(PoolRegistration {
+            pool_params,
+            is_update: None,
+        })
     }
 }
 
