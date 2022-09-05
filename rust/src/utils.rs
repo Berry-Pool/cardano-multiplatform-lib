@@ -1223,13 +1223,18 @@ pub fn hash_transaction(tx_body: &TransactionBody) -> TransactionHash {
     TransactionHash::from(crypto::blake2b256(tx_body.to_bytes().as_ref()))
 }
 #[wasm_bindgen]
-pub fn hash_transaction_raw(tx_body: Vec<u8>) -> TransactionHash {
-    TransactionHash::from(crypto::blake2b256(tx_body.as_ref()))
-}
-#[wasm_bindgen]
 pub fn hash_plutus_data(plutus_data: &PlutusData) -> DataHash {
     DataHash::from(blake2b256(&plutus_data.to_bytes()))
 }
+#[wasm_bindgen]
+pub fn hash_blake2b256(data: Vec<u8>) -> Vec<u8> {
+    crypto::blake2b256(data.as_ref()).to_vec()
+}
+#[wasm_bindgen]
+pub fn hash_blake2b224(data: Vec<u8>) -> Vec<u8> {
+    crypto::blake2b224(data.as_ref()).to_vec()
+}
+
 #[wasm_bindgen]
 pub fn hash_script_data(
     redeemers: &Redeemers,
