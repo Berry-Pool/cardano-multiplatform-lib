@@ -17,6 +17,7 @@ extern crate hex;
 use std::convert::TryInto;
 use std::io::{BufRead, Seek, Write};
 
+use fraction::Fraction;
 #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
 use noop_proc_macro::wasm_bindgen;
 
@@ -95,6 +96,14 @@ impl UnitInterval {
         Self {
             numerator: numerator.clone(),
             denominator: denominator.clone(),
+        }
+    }
+
+    pub fn from_float(float_number: f64) -> Self {
+        let float_number_frac = Fraction::from(float_number);
+        Self {
+            numerator: to_bignum(*float_number_frac.numer().unwrap() as u64),
+            denominator: to_bignum(*float_number_frac.denom().unwrap() as u64),
         }
     }
 }
@@ -3430,6 +3439,19 @@ impl From<&NativeScripts> for RequiredSignersSet {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn unit_interval_from_float() {
+        let float_number: f64 = 0.1;
+        let unit_interval = UnitInterval::from_float(float_number);
+        assert_eq!(
+            unit_interval
+                .numerator()
+                .checked_mul(&to_bignum(10))
+                .unwrap(),
+            unit_interval.denominator()
+        );
+    }
 
     #[test]
     fn native_script_hash() {
