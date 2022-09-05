@@ -1046,13 +1046,46 @@ impl_hash_type!(BlockHash, 32);
 impl_hash_type!(DataHash, 32);
 impl_hash_type!(ScriptDataHash, 32);
 // We might want to make these two vkeys normal classes later but for now it's just arbitrary bytes for us (used in block parsing)
-impl_hash_type!(VRFVKey, 32);
+// impl_hash_type!(VRFVKey, 32);
 impl_hash_type!(KESVKey, 32);
 // same for this signature
 //impl_hash_type!(KESSignature, 448);
 // TODO: when >32 size trait implementations are out of nightly and into stable
 // remove the following manual struct definition and use the above macro again if we
 // don't have proper crypto implementations for it.
+
+#[wasm_bindgen]
+#[derive(Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, JsonSchema)]
+pub struct VRFVKey(Vec<u8>);
+
+to_from_bytes!(VRFVKey);
+
+#[wasm_bindgen]
+impl VRFVKey {
+    pub fn hash(&self) -> VRFKeyHash {
+        VRFKeyHash::from(blake2b256(self.0.to_vec().as_ref()))
+    }
+
+    pub fn to_raw_key(&self) -> Vec<u8> {
+        self.0.clone()
+    }
+}
+
+impl cbor_event::se::Serialize for VRFVKey {
+    fn serialize<'se, W: Write>(
+        &self,
+        serializer: &'se mut Serializer<W>,
+    ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        serializer.write_bytes(&self.0.to_vec())
+    }
+}
+
+impl Deserialize for VRFVKey {
+    fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
+        Ok(Self(raw.bytes()?))
+    }
+}
+
 #[wasm_bindgen]
 #[derive(Debug, Clone, Eq, Hash, Ord, PartialEq, PartialOrd)]
 pub struct KESSignature(pub(crate) Vec<u8>);
