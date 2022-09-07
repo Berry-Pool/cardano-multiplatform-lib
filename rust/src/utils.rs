@@ -1457,10 +1457,123 @@ pub fn encode_json_str_to_native_script(
 
     let native_script = match schema {
         ScriptSchema::Wallet => encode_wallet_value_to_native_script(value, self_xpub)?,
-        ScriptSchema::Node => todo!(),
+        ScriptSchema::Node => encode_node_value_to_native_script(value)?,
     };
 
     Ok(native_script)
+}
+
+fn encode_node_value_to_native_script(value: serde_json::Value) -> Result<NativeScript, JsError> {
+    match value {
+        serde_json::Value::Object(map)
+            if map.get("type").is_some()
+                && map.get("type").unwrap().as_str().is_some()
+                && (map.get("type").unwrap().as_str().unwrap() == "sig") =>
+        {
+            let key_hash = match map.get("keyHash") {
+                Some(value) if value.is_string() => value.as_str().unwrap(),
+                _ => {
+                    return Err(JsError::from_str(
+                        "Type `sig` requires `keyHash` as string.",
+                    ))
+                }
+            };
+            Ok(NativeScript::new_script_pubkey(&ScriptPubkey::new(
+                &Ed25519KeyHash::from_hex(key_hash)?,
+            )))
+        }
+        serde_json::Value::Object(map)
+            if map.get("type").is_some()
+                && map.get("type").unwrap().as_str().is_some()
+                && (map.get("type").unwrap().as_str().unwrap() == "before") =>
+        {
+            let slot = match map.get("slot") {
+                Some(value) if value.is_u64() => value.as_u64().unwrap(),
+                _ => {
+                    return Err(JsError::from_str(
+                        "Type `before` requires `slot` as number.",
+                    ))
+                }
+            };
+            Ok(NativeScript::new_timelock_expiry(&TimelockExpiry::new(
+                &Slot::from(slot),
+            )))
+        }
+        serde_json::Value::Object(map)
+            if map.get("type").is_some()
+                && map.get("type").unwrap().as_str().is_some()
+                && (map.get("type").unwrap().as_str().unwrap() == "after") =>
+        {
+            let slot = match map.get("slot") {
+                Some(value) if value.is_u64() => value.as_u64().unwrap(),
+                _ => return Err(JsError::from_str("Type `after` requires `slot` as number.")),
+            };
+            Ok(NativeScript::new_timelock_start(&TimelockStart::new(
+                &Slot::from(slot),
+            )))
+        }
+        serde_json::Value::Object(map)
+            if map.get("type").is_some()
+                && map.get("type").unwrap().as_str().is_some()
+                && (map.get("type").unwrap().as_str().unwrap() == "all") =>
+        {
+            let scripts = match map.get("scripts") {
+                Some(value) if value.is_array() => value.as_array().unwrap(),
+                _ => return Err(JsError::from_str("Type `all` requires `scripts` as array.")),
+            };
+            let mut all_script = NativeScripts::new();
+            for script in scripts {
+                all_script.add(&encode_node_value_to_native_script(script.clone())?)
+            }
+            Ok(NativeScript::new_script_all(&ScriptAll::new(&all_script)))
+        }
+        serde_json::Value::Object(map)
+            if map.get("type").is_some()
+                && map.get("type").unwrap().as_str().is_some()
+                && (map.get("type").unwrap().as_str().unwrap() == "any") =>
+        {
+            let scripts = match map.get("scripts") {
+                Some(value) if value.is_array() => value.as_array().unwrap(),
+                _ => return Err(JsError::from_str("Type `any` requires `scripts` as array.")),
+            };
+            let mut any_script = NativeScripts::new();
+            for script in scripts {
+                any_script.add(&encode_node_value_to_native_script(script.clone())?)
+            }
+            Ok(NativeScript::new_script_any(&ScriptAny::new(&any_script)))
+        }
+        serde_json::Value::Object(map)
+            if map.get("type").is_some()
+                && map.get("type").unwrap().as_str().is_some()
+                && (map.get("type").unwrap().as_str().unwrap() == "atLeast") =>
+        {
+            let required = match map.get("required") {
+                Some(value) if value.is_u64() => value.as_u64().unwrap(),
+                _ => {
+                    return Err(JsError::from_str(
+                        "Type `atLeast` requires `required` as number.",
+                    ))
+                }
+            };
+            let scripts = match map.get("scripts") {
+                Some(value) if value.is_array() => value.as_array().unwrap(),
+                _ => {
+                    return Err(JsError::from_str(
+                        "Type `atLeast` requires `scripts` as array.",
+                    ))
+                }
+            };
+            let mut atleast_script = NativeScripts::new();
+            for script in scripts {
+                atleast_script.add(&encode_node_value_to_native_script(script.clone())?)
+            }
+            Ok(NativeScript::new_script_n_of_k(&ScriptNOfK::new(
+                required as u32,
+                &atleast_script,
+            )))
+        }
+        _ => return Err(JsError::from_str("No variant matched.")),
+    }
 }
 
 fn encode_wallet_value_to_native_script(
@@ -1756,6 +1869,92 @@ mod tests {
             coin: BigNum(1555554),
             multiasset: Some(token_bundle),
         }
+    }
+
+    #[test]
+    fn test_node_to_native_script() {
+        let all_script = r#"
+        {
+            "type": "all",
+            "scripts":
+            [
+              {
+                "type": "sig",
+                "keyHash": "e09d36c79dec9bd1b3d9e152247701cd0bb860b5ebfd1de8abb6735a"
+              },
+              {
+                "type": "sig",
+                "keyHash": "a687dcc24e00dd3caafbeb5e68f97ca8ef269cb6fe971345eb951756"
+              },
+              {
+                "type": "sig",
+                "keyHash": "0bd1d702b2e6188fe0857a6dc7ffb0675229bab58c86638ffa87ed6d"
+              }
+            ]
+          }
+    "#;
+
+        let before_script = r#"
+        {
+            "type": "any",
+            "scripts":
+            [
+              {
+                "type": "sig",
+                "keyHash": "b275b08c999097247f7c17e77007c7010cd19f20cc086ad99d398538"
+              },
+              {
+                "type": "all",
+                "scripts":
+                [
+                  {
+                    "type": "before",
+                    "slot": 3000
+                  },
+                  {
+                    "type": "sig",
+                    "keyHash": "966e394a544f242081e41d1965137b1bb412ac230d40ed5407821c37"
+                  }
+                ]
+              }
+            ]
+          }          
+      "#;
+
+        let atleast_script = r#"
+            {
+                "type": "atLeast",
+                "required": 2,
+                "scripts":
+                [
+                {
+                    "type": "sig",
+                    "keyHash": "2f3d4cf10d0471a1db9f2d2907de867968c27bca6272f062cd1c2413"
+                },
+                {
+                    "type": "sig",
+                    "keyHash": "f856c0c5839bab22673747d53f1ae9eed84afafb085f086e8e988614"
+                },
+                {
+                    "type": "sig",
+                    "keyHash": "b275b08c999097247f7c17e77007c7010cd19f20cc086ad99d398538"
+                }
+                ]
+            }
+        "#;
+
+        let all_native_script =
+            encode_json_str_to_native_script(all_script, "", ScriptSchema::Node).unwrap();
+
+        let before_native_script =
+            encode_json_str_to_native_script(before_script, "", ScriptSchema::Node).unwrap();
+
+        let atleast_native_script =
+            encode_json_str_to_native_script(atleast_script, "", ScriptSchema::Node).unwrap();
+
+        assert_eq!( hex::encode(all_native_script.to_bytes()),"8201838200581ce09d36c79dec9bd1b3d9e152247701cd0bb860b5ebfd1de8abb6735a8200581ca687dcc24e00dd3caafbeb5e68f97ca8ef269cb6fe971345eb9517568200581c0bd1d702b2e6188fe0857a6dc7ffb0675229bab58c86638ffa87ed6d");
+        assert_eq!( hex::encode(before_native_script.to_bytes()),"8202828200581cb275b08c999097247f7c17e77007c7010cd19f20cc086ad99d3985388201828205190bb88200581c966e394a544f242081e41d1965137b1bb412ac230d40ed5407821c37");
+        assert_eq!( hex::encode(atleast_native_script.to_bytes()),"830302838200581c2f3d4cf10d0471a1db9f2d2907de867968c27bca6272f062cd1c24138200581cf856c0c5839bab22673747d53f1ae9eed84afafb085f086e8e9886148200581cb275b08c999097247f7c17e77007c7010cd19f20cc086ad99d398538");
     }
 
     #[test]
