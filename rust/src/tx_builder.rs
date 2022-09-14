@@ -253,8 +253,9 @@ struct MockWitnessSet {
 
 #[derive(Clone, Debug)]
 struct TxBuilderInput {
-    input: TransactionInput,
-    amount: Value, // we need to keep track of the amount in the inputs for input selection
+    utxo: TransactionUnspentOutput,
+    // input: TransactionInput,
+    // amount: Value, // we need to keep track of the amount in the inputs for input selection
     redeemer: Option<Redeemer>, // we need to keep track of the redeemer index
 }
 
@@ -514,7 +515,7 @@ impl TransactionBuilder {
             .filter(|utxo| {
                 self.inputs
                     .iter()
-                    .all(|tx_builder_input| utxo.input != tx_builder_input.input)
+                    .all(|tx_builder_input| utxo.input != tx_builder_input.utxo.input)
             })
             .collect::<Vec<TransactionUnspentOutput>>();
 
@@ -882,8 +883,7 @@ impl TransactionBuilder {
     /// 2) Witnesses are a set so we need to get rid of duplicates to avoid over-estimating the fee
     fn add_key_input(&mut self, hash: &Ed25519KeyHash, utxo: &TransactionUnspentOutput) {
         self.inputs.push(TxBuilderInput {
-            input: utxo.input.clone(),
-            amount: utxo.output.amount.clone(),
+            utxo: utxo.clone(),
             redeemer: None,
         });
         self.input_types.vkeys.insert(hash.clone());
@@ -897,15 +897,14 @@ impl TransactionBuilder {
         if self
             .inputs
             .iter()
-            .any(|tx_builder_input| utxo.input == tx_builder_input.input)
+            .any(|tx_builder_input| utxo.input == tx_builder_input.utxo.input)
         {
             return;
         }
 
         if script_witness.is_none() {
             self.inputs.push(TxBuilderInput {
-                input: utxo.input.clone(),
-                amount: utxo.output.amount.clone(),
+                utxo: utxo.clone(),
                 redeemer: None,
             });
         } else {
@@ -919,8 +918,7 @@ impl TransactionBuilder {
                     }
 
                     self.inputs.push(TxBuilderInput {
-                        input: utxo.input.clone(),
-                        amount: utxo.output.amount.clone(),
+                        utxo: utxo.clone(),
                         redeemer: None,
                     });
                 }
@@ -947,8 +945,7 @@ impl TransactionBuilder {
                     }
 
                     self.inputs.push(TxBuilderInput {
-                        input: utxo.input.clone(),
-                        amount: utxo.output.amount.clone(),
+                        utxo: utxo.clone(),
                         redeemer: Some(Redeemer::new(
                             &RedeemerTag::new_spend(),
                             &to_bignum(0), // will point to correct input when finalizing txBuilder
@@ -963,20 +960,19 @@ impl TransactionBuilder {
     fn add_bootstrap_input(
         &mut self,
         hash: &ByronAddress,
-        input: &TransactionInput,
+        utxo: &TransactionUnspentOutput,
         amount: &Value,
     ) {
         if self
             .inputs
             .iter()
-            .any(|tx_builder_input| *input == tx_builder_input.input)
+            .any(|tx_builder_input| utxo.input == tx_builder_input.utxo.input)
         {
             return;
         }
 
         self.inputs.push(TxBuilderInput {
-            input: input.clone(),
-            amount: amount.clone(),
+            utxo: utxo.clone(),
             redeemer: None,
         });
         self.input_types.bootstraps.insert(hash.to_bytes());
@@ -990,7 +986,7 @@ impl TransactionBuilder {
         if self
             .inputs
             .iter()
-            .any(|tx_builder_input| utxo.input == tx_builder_input.input)
+            .any(|tx_builder_input| utxo.input == tx_builder_input.utxo.input)
         {
             return;
         }
@@ -1064,7 +1060,7 @@ impl TransactionBuilder {
         }
         match &ByronAddress::from_address(address) {
             Some(addr) => {
-                return self.add_bootstrap_input(addr, &utxo.input, &utxo.output.amount);
+                return self.add_bootstrap_input(addr, &utxo, &utxo.output.amount);
             }
             None => (),
         }
@@ -1553,8 +1549,7 @@ impl TransactionBuilder {
 
         let mut inputs = self.collateral.clone().unwrap();
         inputs.push(TxBuilderInput {
-            input: utxo.input.clone(),
-            amount: utxo.output.amount.clone(),
+            utxo: utxo.clone(),
             redeemer: None,
         });
         self.collateral = Some(inputs.clone());
@@ -1631,7 +1626,7 @@ impl TransactionBuilder {
         }
         let mut inputs = TransactionInputs::new();
         for tx_builder_input in self.collateral.clone().unwrap() {
-            inputs.add(&tx_builder_input.input);
+            inputs.add(&tx_builder_input.utxo.input);
         }
         Some(inputs)
     }
@@ -1666,7 +1661,7 @@ impl TransactionBuilder {
         self.inputs
             .iter()
             .try_fold(Value::zero(), |acc, ref tx_builder_input| {
-                acc.checked_add(&tx_builder_input.amount)
+                acc.checked_add(&tx_builder_input.utxo.output.amount)
             })
     }
 
@@ -1778,13 +1773,7 @@ impl TransactionBuilder {
         let mut inputs = self
             .inputs
             .iter()
-            .map(
-                |TxBuilderInput {
-                     input,
-                     amount: _,
-                     redeemer: _,
-                 }| input.clone(),
-            )
+            .map(|TxBuilderInput { utxo, redeemer: _ }| utxo.input.clone())
             .collect::<Vec<TransactionInput>>();
         inputs.sort();
         inputs
@@ -2038,7 +2027,7 @@ impl TransactionBuilder {
             inputs: TransactionInputs(
                 self.inputs
                     .iter()
-                    .map(|ref tx_builder_input| tx_builder_input.input.clone())
+                    .map(|ref tx_builder_input| tx_builder_input.utxo.input.clone())
                     .collect(),
             ),
             outputs: total_outputs,
@@ -2156,7 +2145,7 @@ impl TransactionBuilder {
                 let index = to_bignum(
                     lexical_order_inputs
                         .iter()
-                        .position(|i| *i == input.input)
+                        .position(|i| *i == input.utxo.input)
                         .unwrap() as u64,
                 );
                 let new_redeemer = Redeemer::new(
@@ -2317,7 +2306,7 @@ impl TransactionBuilder {
         }
 
         let collateral_input_value = collateral.iter().fold(Value::zero(), |acc, input| {
-            acc.checked_add(&input.amount).unwrap()
+            acc.checked_add(&input.utxo.output.amount).unwrap()
         });
 
         let get_collateral_return = |input_value: &Value, total_col: &BigNum| {
@@ -2440,8 +2429,7 @@ impl TransactionBuilder {
 
                     let utxo = available_collateral.pop().unwrap();
                     collateral.push(TxBuilderInput {
-                        input: utxo.input.clone(),
-                        amount: utxo.output.amount.clone(),
+                        utxo: utxo.clone(),
                         redeemer: None,
                     });
                     this.collateral = Some(collateral.clone());
