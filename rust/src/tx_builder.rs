@@ -2012,9 +2012,8 @@ impl TransactionBuilder {
     }
 
     fn build_and_size(&mut self) -> Result<(TransactionBody, usize), JsError> {
-        let fee = self
-            .fee
-            .ok_or_else(|| JsError::from_str("Fee not specified"))?;
+        let fee = self.fee.unwrap_or(to_bignum(0));
+        // .ok_or_else(|| JsError::from_str("Fee not specified"))?;
 
         let mut total_outputs = self.outputs.clone();
         for change_output in &self.change_outputs.0 {
