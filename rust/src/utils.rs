@@ -1227,11 +1227,11 @@ pub fn hash_plutus_data(plutus_data: &PlutusData) -> DataHash {
     DataHash::from(blake2b256(&plutus_data.to_bytes()))
 }
 #[wasm_bindgen]
-pub fn hash_blake2b256(data: &Vec<u8>) -> Vec<u8> {
+pub fn hash_blake2b256(data: Vec<u8>) -> Vec<u8> {
     crypto::blake2b256(data.as_ref()).to_vec()
 }
 #[wasm_bindgen]
-pub fn hash_blake2b224(data: &Vec<u8>) -> Vec<u8> {
+pub fn hash_blake2b224(data: Vec<u8>) -> Vec<u8> {
     crypto::blake2b224(data.as_ref()).to_vec()
 }
 
