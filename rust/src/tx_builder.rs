@@ -2088,6 +2088,14 @@ impl TransactionBuilder {
         return Ok((full_tx.body, full_tx_size));
     }
 
+    /// Returns the TransactionBody.
+    pub fn to_bytes(&mut self) -> Result<Vec<u8>, JsError> {
+        match self.build_and_size() {
+            Ok((body, _)) => Ok(body.to_bytes()),
+            Err(err) => Err(err),
+        }
+    }
+
     pub fn full_size(&mut self) -> Result<usize, JsError> {
         return self.build_and_size().map(|r| r.1);
     }
