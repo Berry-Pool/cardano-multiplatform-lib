@@ -465,7 +465,7 @@ pub struct TransactionBuilder {
     //Babbage
     collateral_return: Option<TransactionOutput>,
     total_collateral: Option<Coin>,
-    reference_inputs: Option<TransactionInputs>,
+    reference_inputs: Option<TransactionUnspentOutputs>,
     plutus_v2_scripts: Option<PlutusScripts>,
     used_plutus_scripts: HashSet<ScriptHash>, // collect script hashes from inputs, mints, certs and withdrawals
     plutus_versions: HashMap<ScriptHash, Language>, // versions part of the tx determined through looking at added scripts
@@ -1068,12 +1068,12 @@ impl TransactionBuilder {
 
     pub fn add_reference_input(&mut self, utxo: &TransactionUnspentOutput) {
         if self.reference_inputs.is_none() {
-            let inputs = TransactionInputs::new();
-            self.reference_inputs = Some(inputs);
+            let utxos = TransactionUnspentOutputs::new();
+            self.reference_inputs = Some(utxos);
         }
-        let mut inputs = self.reference_inputs.clone().unwrap();
-        inputs.add(&utxo.input);
-        self.reference_inputs = Some(inputs);
+        let mut utxos = self.reference_inputs.clone().unwrap();
+        utxos.add(&utxo);
+        self.reference_inputs = Some(utxos);
 
         // get plutus version for script from scriptRef
         match &utxo.output.script_ref {
@@ -2080,7 +2080,12 @@ impl TransactionBuilder {
             network_id: self.network_id.clone(),
             collateral_return: self.collateral_return.clone(),
             total_collateral: self.total_collateral.clone(),
-            reference_inputs: self.reference_inputs.clone(),
+            reference_inputs: match &self.reference_inputs {
+                Some(utxos) => Some(TransactionInputs(
+                    utxos.0.iter().map(|utxo| utxo.input.clone()).collect(),
+                )),
+                None => None,
+            },
         };
         // we must build a tx with fake data (of correct size) to check the final Transaction size
         let full_tx = fake_full_tx(self, built)?;
