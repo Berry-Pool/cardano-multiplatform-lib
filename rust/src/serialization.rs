@@ -288,6 +288,10 @@ impl cbor_event::se::Serialize for TransactionBody {
         &self,
         serializer: &'se mut Serializer<W>,
     ) -> cbor_event::Result<&'se mut Serializer<W>> {
+        if let Some(b) = &self.original_bytes {
+            return serializer.write_raw_bytes(b);
+        }
+
         serializer.write_map(cbor_event::Len::Len(
             3 + match &self.ttl {
                 Some(_) => 1,
