@@ -289,9 +289,11 @@ pub struct TransactionBuilderConfig {
     max_tx_size: u32,             // protocol parameter
     coins_per_utxo_byte: Coin,    // protocol parameter
     ex_unit_prices: ExUnitPrices, // protocol parameter
+    max_tx_ex_units: ExUnits,     // protocol parameter
     costmdls: Costmdls,           // protocol parameter
     collateral_percentage: u32,   // protocol parameter
     max_collateral_inputs: u32,   // protocol parameter
+    slot_config: (u64, u32),      // (zero_time, slot_length)
     blockfrost: Blockfrost,
 }
 
@@ -305,9 +307,11 @@ pub struct TransactionBuilderConfigBuilder {
     max_tx_size: Option<u32>,             // protocol parameter
     coins_per_utxo_byte: Option<Coin>,    // protocol parameter
     ex_unit_prices: Option<ExUnitPrices>, // protocol parameter
+    max_tx_ex_units: Option<ExUnits>,     // protocol parameter
     costmdls: Option<Costmdls>,           // protocol parameter
     collateral_percentage: Option<u32>,   // protocol parameter
     max_collateral_inputs: Option<u32>,   // protocol parameter
+    slot_config: Option<(u64, u32)>,      // (zero_time, slot_length)
     blockfrost: Option<Blockfrost>,
 }
 
@@ -322,9 +326,11 @@ impl TransactionBuilderConfigBuilder {
             max_tx_size: None,
             coins_per_utxo_byte: None,
             ex_unit_prices: None,
+            max_tx_ex_units: None,
             costmdls: None,
             collateral_percentage: None,
             max_collateral_inputs: None,
+            slot_config: None,
             blockfrost: None,
         }
     }
@@ -371,6 +377,12 @@ impl TransactionBuilderConfigBuilder {
         cfg
     }
 
+    pub fn max_tx_ex_units(&self, max_tx_ex_units: &ExUnits) -> Self {
+        let mut cfg = self.clone();
+        cfg.max_tx_ex_units = Some(max_tx_ex_units.clone());
+        cfg
+    }
+
     pub fn costmdls(&self, costmdls: &Costmdls) -> Self {
         let mut cfg = self.clone();
         cfg.costmdls = Some(costmdls.clone());
@@ -386,6 +398,12 @@ impl TransactionBuilderConfigBuilder {
     pub fn max_collateral_inputs(&self, max_collateral_inputs: u32) -> Self {
         let mut cfg = self.clone();
         cfg.max_collateral_inputs = Some(max_collateral_inputs);
+        cfg
+    }
+
+    pub fn slot_config(&self, zero_time: u64, slot_length: u32) -> Self {
+        let mut cfg = self.clone();
+        cfg.slot_config = Some((zero_time, slot_length));
         cfg
     }
 
@@ -419,6 +437,11 @@ impl TransactionBuilderConfigBuilder {
             ex_unit_prices: cfg
                 .ex_unit_prices
                 .ok_or(JsError::from_str("uninitialized field: ex_unit_prices"))?,
+            max_tx_ex_units: if cfg.max_tx_ex_units.is_some() {
+                cfg.max_tx_ex_units.unwrap()
+            } else {
+                ExUnits::new(&to_bignum(0), &to_bignum(0))
+            },
             costmdls: if cfg.costmdls.is_some() {
                 cfg.costmdls.unwrap()
             } else {
@@ -430,6 +453,11 @@ impl TransactionBuilderConfigBuilder {
             max_collateral_inputs: cfg.max_collateral_inputs.ok_or(JsError::from_str(
                 "uninitialized field: max_collateral_inputs",
             ))?,
+            slot_config: if cfg.slot_config.is_some() {
+                cfg.slot_config.unwrap()
+            } else {
+                (0, 0)
+            },
             blockfrost: if cfg.blockfrost.is_some() {
                 cfg.blockfrost.unwrap()
             } else {
