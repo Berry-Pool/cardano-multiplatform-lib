@@ -293,7 +293,7 @@ pub struct TransactionBuilderConfig {
     costmdls: Costmdls,           // protocol parameter
     collateral_percentage: u32,   // protocol parameter
     max_collateral_inputs: u32,   // protocol parameter
-    slot_config: (u64, u32),      // (zero_time, slot_length)
+    slot_config: (BigNum, u32),   // (zero_time, slot_length)
     blockfrost: Blockfrost,
 }
 
@@ -311,7 +311,7 @@ pub struct TransactionBuilderConfigBuilder {
     costmdls: Option<Costmdls>,           // protocol parameter
     collateral_percentage: Option<u32>,   // protocol parameter
     max_collateral_inputs: Option<u32>,   // protocol parameter
-    slot_config: Option<(u64, u32)>,      // (zero_time, slot_length)
+    slot_config: Option<(BigNum, u32)>,   // (zero_time, slot_length)
     blockfrost: Option<Blockfrost>,
 }
 
@@ -401,9 +401,9 @@ impl TransactionBuilderConfigBuilder {
         cfg
     }
 
-    pub fn slot_config(&self, zero_time: u64, slot_length: u32) -> Self {
+    pub fn slot_config(&self, zero_time: &BigNum, slot_length: u32) -> Self {
         let mut cfg = self.clone();
-        cfg.slot_config = Some((zero_time, slot_length));
+        cfg.slot_config = Some((zero_time.clone(), slot_length));
         cfg
     }
 
@@ -456,7 +456,7 @@ impl TransactionBuilderConfigBuilder {
             slot_config: if cfg.slot_config.is_some() {
                 cfg.slot_config.unwrap()
             } else {
-                (0, 0)
+                (to_bignum(0), 0)
             },
             blockfrost: if cfg.blockfrost.is_some() {
                 cfg.blockfrost.unwrap()
