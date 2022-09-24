@@ -283,17 +283,17 @@ struct TxBuilderWithdrawal {
 #[derive(Clone, Debug)]
 pub struct TransactionBuilderConfig {
     fee_algo: fees::LinearFee,
-    pool_deposit: BigNum,         // protocol parameter
-    key_deposit: BigNum,          // protocol parameter
-    max_value_size: u32,          // protocol parameter
-    max_tx_size: u32,             // protocol parameter
-    coins_per_utxo_byte: Coin,    // protocol parameter
-    ex_unit_prices: ExUnitPrices, // protocol parameter
-    max_tx_ex_units: ExUnits,     // protocol parameter
-    costmdls: Costmdls,           // protocol parameter
-    collateral_percentage: u32,   // protocol parameter
-    max_collateral_inputs: u32,   // protocol parameter
-    slot_config: (BigNum, u32),   // (zero_time, slot_length)
+    pool_deposit: BigNum,               // protocol parameter
+    key_deposit: BigNum,                // protocol parameter
+    max_value_size: u32,                // protocol parameter
+    max_tx_size: u32,                   // protocol parameter
+    coins_per_utxo_byte: Coin,          // protocol parameter
+    ex_unit_prices: ExUnitPrices,       // protocol parameter
+    max_tx_ex_units: ExUnits,           // protocol parameter
+    costmdls: Costmdls,                 // protocol parameter
+    collateral_percentage: u32,         // protocol parameter
+    max_collateral_inputs: u32,         // protocol parameter
+    slot_config: (BigNum, BigNum, u32), // (zero_time, zero_slot, slot_length)
     blockfrost: Blockfrost,
 }
 
@@ -301,17 +301,17 @@ pub struct TransactionBuilderConfig {
 #[derive(Clone, Debug)]
 pub struct TransactionBuilderConfigBuilder {
     fee_algo: Option<fees::LinearFee>,
-    pool_deposit: Option<BigNum>,         // protocol parameter
-    key_deposit: Option<BigNum>,          // protocol parameter
-    max_value_size: Option<u32>,          // protocol parameter
-    max_tx_size: Option<u32>,             // protocol parameter
-    coins_per_utxo_byte: Option<Coin>,    // protocol parameter
-    ex_unit_prices: Option<ExUnitPrices>, // protocol parameter
-    max_tx_ex_units: Option<ExUnits>,     // protocol parameter
-    costmdls: Option<Costmdls>,           // protocol parameter
-    collateral_percentage: Option<u32>,   // protocol parameter
-    max_collateral_inputs: Option<u32>,   // protocol parameter
-    slot_config: Option<(BigNum, u32)>,   // (zero_time, slot_length)
+    pool_deposit: Option<BigNum>,               // protocol parameter
+    key_deposit: Option<BigNum>,                // protocol parameter
+    max_value_size: Option<u32>,                // protocol parameter
+    max_tx_size: Option<u32>,                   // protocol parameter
+    coins_per_utxo_byte: Option<Coin>,          // protocol parameter
+    ex_unit_prices: Option<ExUnitPrices>,       // protocol parameter
+    max_tx_ex_units: Option<ExUnits>,           // protocol parameter
+    costmdls: Option<Costmdls>,                 // protocol parameter
+    collateral_percentage: Option<u32>,         // protocol parameter
+    max_collateral_inputs: Option<u32>,         // protocol parameter
+    slot_config: Option<(BigNum, BigNum, u32)>, // (zero_time, zero_slot, slot_length)
     blockfrost: Option<Blockfrost>,
 }
 
@@ -401,9 +401,9 @@ impl TransactionBuilderConfigBuilder {
         cfg
     }
 
-    pub fn slot_config(&self, zero_time: &BigNum, slot_length: u32) -> Self {
+    pub fn slot_config(&self, zero_time: &BigNum, zero_slot: &BigNum, slot_length: u32) -> Self {
         let mut cfg = self.clone();
-        cfg.slot_config = Some((zero_time.clone(), slot_length));
+        cfg.slot_config = Some((zero_time.clone(), zero_slot.clone(), slot_length));
         cfg
     }
 
@@ -456,7 +456,7 @@ impl TransactionBuilderConfigBuilder {
             slot_config: if cfg.slot_config.is_some() {
                 cfg.slot_config.unwrap()
             } else {
-                (to_bignum(0), 0)
+                (to_bignum(0), to_bignum(0), 0)
             },
             blockfrost: if cfg.blockfrost.is_some() {
                 cfg.blockfrost.unwrap()
