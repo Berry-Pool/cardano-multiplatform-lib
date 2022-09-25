@@ -3,6 +3,7 @@ use super::*;
 use crate::witness_builder::RedeemerWitnessKey;
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashMap};
+use uplc::tx::eval_phase_two_raw;
 
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
 use js_sys::*;
@@ -74,13 +75,67 @@ impl Blockfrost {
     }
 }
 
+pub fn get_ex_units(
+    tx: &Transaction,
+    utxos: &TransactionUnspentOutputs,
+    cost_mdls: &Costmdls,
+    max_ex_units: &ExUnits,
+    slot_config: (BigNum, BigNum, u32),
+) -> Result<Redeemers, JsError> {
+    let tx_bytes = tx.to_bytes();
+
+    let utxos_bytes: Vec<(Vec<u8>, Vec<u8>)> = utxos
+        .0
+        .iter()
+        .map(|utxo| (utxo.input.to_bytes(), utxo.output.to_bytes()))
+        .collect();
+
+    let cost_mdls_bytes = cost_mdls.to_bytes();
+
+    let initial_budget = (
+        from_bignum(&max_ex_units.steps()),
+        from_bignum(&max_ex_units.mem()),
+    );
+
+    let sc = (
+        from_bignum(&slot_config.0),
+        from_bignum(&slot_config.1),
+        slot_config.2 as u64,
+    );
+
+    let result = eval_phase_two_raw(
+        &tx_bytes,
+        &utxos_bytes,
+        &cost_mdls_bytes,
+        initial_budget,
+        sc,
+        false,
+    );
+
+    match result {
+        Ok(redeemers_bytes) => Ok(Redeemers(
+            redeemers_bytes
+                .iter()
+                .map(|r| Redeemer::from_bytes(r.to_vec()).unwrap())
+                .collect(),
+        )),
+        Err(err) => Err(JsError::from_str(&err.to_string())),
+    }
+}
+
 #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
-pub async fn get_ex_units(tx: Transaction, bf: &Blockfrost) -> Result<Redeemers, JsError> {
+pub async fn get_ex_units_blockfrost(
+    tx: Transaction,
+    bf: &Blockfrost,
+) -> Result<Redeemers, JsError> {
     Ok(Redeemers::new())
 }
 
 #[cfg(all(target_arch = "wasm32", not(target_os = "emscripten")))]
-pub async fn get_ex_units(tx: Transaction, bf: &Blockfrost) -> Result<Redeemers, JsError> {
+pub async fn get_ex_units_blockfrost(
+    tx: Transaction,
+    bf: &Blockfrost,
+) -> Result<Redeemers, JsError> {
     if bf.url.is_empty() || bf.project_id.is_empty() {
         return Err(JsError::from_str(
             "Blockfrost not set. Can't calculate ex units",
