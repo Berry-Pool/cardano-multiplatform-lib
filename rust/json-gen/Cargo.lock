@@ -184,8 +184,6 @@ checksum = "e78d4f1cc4ae33bbfc157ed5d5a5ef3bc29227303d595861deb238fcec4e9457"
 [[package]]
 name = "flat-rs"
 version = "0.0.10"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "55e0005d2d6871b40861b7292e9dc02dfd3f31033c39dd36c2442dff52a76e49"
 dependencies = [
  "anyhow",
  "thiserror",
@@ -757,9 +755,7 @@ checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 
 [[package]]
 name = "uplc"
-version = "0.0.13"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "ab6e7f36a6e5e58002f3fe2cdd2f68d46948513218d82c8d8c7853d70cf66ee2"
+version = "0.0.14"
 dependencies = [
  "anyhow",
  "cryptoxide",
