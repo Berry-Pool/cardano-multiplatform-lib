@@ -100,7 +100,7 @@ pub fn get_ex_units(
     let sc = (
         from_bignum(&slot_config.0),
         from_bignum(&slot_config.1),
-        slot_config.2 as u64,
+        slot_config.2,
     );
 
     let result = eval_phase_two_raw(
