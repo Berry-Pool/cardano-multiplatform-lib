@@ -75,6 +75,17 @@ impl Blockfrost {
     }
 }
 
+#[wasm_bindgen]
+pub fn apply_params_to_plutus_script(
+    params: &PlutusList,
+    plutus_script: PlutusScript,
+) -> Result<PlutusScript, JsError> {
+    match uplc::tx::apply_params_to_script(&params.to_bytes(), &plutus_script.bytes()) {
+        Ok(res) => Ok(PlutusScript::new(res)),
+        Err(err) => Err(JsError::from_str(&err.to_string())),
+    }
+}
+
 pub fn get_ex_units(
     tx: &Transaction,
     utxos: &TransactionUnspentOutputs,
