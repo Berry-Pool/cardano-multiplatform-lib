@@ -250,9 +250,9 @@ checksum = "7f24254aa9a54b5c858eaee2f5bccdb46aaf0e486a595ed5fd8f86ba55232a70"
 
 [[package]]
 name = "itertools"
-version = "0.10.3"
+version = "0.10.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a9a9d19fa1e79b6215ff29b9d6880b706147f16e9b1dbb1e4e5947b5b02bc5e3"
+checksum = "b0fd2260e829bddf4cb6ea802289de2f86d6a7a690192fbe91b3f46e0f2c8473"
 dependencies = [
  "either",
 ]
@@ -788,14 +788,15 @@ checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 
 [[package]]
 name = "uplc"
-version = "0.0.23"
+version = "0.0.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d9f3f833e00c94f8dd4d9266acd07b16a92562f603937dcfadc54beff5b7e2c4"
+checksum = "4d67c64b13ebc15f73072678bf299adac6e0c1db0838ad0e3b710b04bbf9587c"
 dependencies = [
  "anyhow",
  "cryptoxide",
  "flat-rs",
  "hex",
+ "itertools",
  "pallas-addresses",
  "pallas-codec",
  "pallas-crypto",
