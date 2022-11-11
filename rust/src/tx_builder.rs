@@ -1095,6 +1095,17 @@ impl TransactionBuilder {
     }
 
     pub fn add_reference_input(&mut self, utxo: &TransactionUnspentOutput) {
+        if self
+            .reference_inputs
+            .clone()
+            .unwrap_or(TransactionUnspentOutputs::new())
+            .0
+            .iter()
+            .any(|_utxo| _utxo.input == utxo.input)
+        {
+            return;
+        }
+
         if self.reference_inputs.is_none() {
             let utxos = TransactionUnspentOutputs::new();
             self.reference_inputs = Some(utxos);
@@ -1663,9 +1674,12 @@ impl TransactionBuilder {
         if self.required_signers.is_none() {
             self.required_signers = Some(Ed25519KeyHashes::new());
         }
+
         let mut required_signers = self.required_signers.clone().unwrap();
-        required_signers.add(&required_signer.clone());
-        self.required_signers = Some(required_signers);
+        if !required_signers.0.contains(required_signer) {
+            required_signers.add(&required_signer.clone());
+            self.required_signers = Some(required_signers);
+        }
     }
 
     pub fn required_signers(&self) -> Option<RequiredSigners> {
