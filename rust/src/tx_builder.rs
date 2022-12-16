@@ -2501,10 +2501,8 @@ impl TransactionBuilder {
                     }
 
                     let utxo = available_collateral.pop().unwrap();
-                    collateral.push(TxBuilderInput {
-                        utxo: utxo.clone(),
-                        redeemer: None,
-                    });
+
+                    this.add_collateral(&utxo)?;
                     this.collateral = Some(collateral.clone());
                 }
 
