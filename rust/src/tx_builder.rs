@@ -2480,9 +2480,8 @@ impl TransactionBuilder {
                     .sorted_by(|a, b| pure_ada(&a.output).cmp(&pure_ada(&b.output)))
                     .collect();
 
-                let mut collateral = this.collateral.clone().unwrap_or(Vec::new());
-
                 loop {
+                    let collateral = this.collateral.clone().unwrap_or(Vec::new());
                     match this.update_collateral_and_balance(
                         &collateral,
                         &collateral_change_address.clone().unwrap(),
@@ -2501,9 +2500,7 @@ impl TransactionBuilder {
                     }
 
                     let utxo = available_collateral.pop().unwrap();
-
                     this.add_collateral(&utxo)?;
-                    this.collateral = Some(collateral.clone());
                 }
 
                 let (final_body, final_full_tx_size) = this.build_and_size()?;
