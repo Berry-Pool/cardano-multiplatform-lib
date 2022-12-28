@@ -18,6 +18,7 @@ use std::convert::TryInto;
 use std::io::{BufRead, Seek, Write};
 
 use fraction::Fraction;
+use itertools::Itertools;
 #[cfg(not(all(target_arch = "wasm32", not(target_os = "emscripten"))))]
 use noop_proc_macro::wasm_bindgen;
 
@@ -193,6 +194,9 @@ impl TransactionInputs {
 
     pub fn add(&mut self, elem: &TransactionInput) {
         self.0.push(elem.clone());
+    }
+    pub fn sort(&mut self) {
+        self.0.sort()
     }
 }
 
@@ -1638,7 +1642,7 @@ impl RewardAddresses {
 
 #[wasm_bindgen]
 #[derive(Clone, Debug, Eq, Ord, PartialEq, PartialOrd)]
-pub struct Withdrawals(linked_hash_map::LinkedHashMap<RewardAddress, Coin>);
+pub struct Withdrawals(std::collections::BTreeMap<RewardAddress, Coin>);
 
 to_from_bytes!(Withdrawals);
 
@@ -1647,7 +1651,7 @@ to_from_json!(Withdrawals);
 #[wasm_bindgen]
 impl Withdrawals {
     pub fn new() -> Self {
-        Self(linked_hash_map::LinkedHashMap::new())
+        Self(std::collections::BTreeMap::new())
     }
 
     pub fn len(&self) -> usize {
@@ -2071,6 +2075,59 @@ impl NativeScript {
                 .map(|k| k.clone())
                 .collect(),
         )
+    }
+
+    pub fn verify(
+        &self,
+        lower_bound: Option<Slot>,
+        upper_bound: Option<Slot>,
+        key_hashes: &Ed25519KeyHashes,
+    ) -> bool {
+        fn verify_helper(
+            script: &NativeScript,
+            lower_bound: Option<Slot>,
+            upper_bound: Option<Slot>,
+            key_hashes: &Ed25519KeyHashes,
+        ) -> bool {
+            match &script.0 {
+                NativeScriptEnum::ScriptPubkey(pub_key) => {
+                    key_hashes.0.contains(&pub_key.addr_keyhash)
+                }
+                NativeScriptEnum::ScriptAll(script_all) => {
+                    script_all.native_scripts.0.iter().all(|sub_script| {
+                        verify_helper(sub_script, lower_bound, upper_bound, key_hashes)
+                    })
+                }
+                NativeScriptEnum::ScriptAny(script_any) => {
+                    script_any.native_scripts.0.iter().any(|sub_script| {
+                        verify_helper(sub_script, lower_bound, upper_bound, key_hashes)
+                    })
+                }
+                NativeScriptEnum::ScriptNOfK(script_atleast) => {
+                    script_atleast
+                        .native_scripts
+                        .0
+                        .iter()
+                        .map(|sub_script| {
+                            verify_helper(sub_script, lower_bound, upper_bound, key_hashes)
+                        })
+                        .filter(|r| *r)
+                        .collect_vec()
+                        .len()
+                        >= script_atleast.n as usize
+                }
+                NativeScriptEnum::TimelockStart(timelock_start) => match lower_bound {
+                    Some(tx_slot) => tx_slot >= timelock_start.slot,
+                    _ => false,
+                },
+                NativeScriptEnum::TimelockExpiry(timelock_expiry) => match upper_bound {
+                    Some(tx_slot) => tx_slot < timelock_expiry.slot,
+                    _ => false,
+                },
+            }
+        }
+
+        verify_helper(self, lower_bound, upper_bound, key_hashes)
     }
 }
 

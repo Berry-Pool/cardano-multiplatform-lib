@@ -2580,7 +2580,7 @@ impl cbor_event::se::Serialize for Withdrawals {
 
 impl Deserialize for Withdrawals {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
-        let mut table = linked_hash_map::LinkedHashMap::new();
+        let mut table = std::collections::BTreeMap::new();
         (|| -> Result<_, DeserializeError> {
             let len = raw.map()?;
             while match len {
