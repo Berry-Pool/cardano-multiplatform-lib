@@ -1731,6 +1731,220 @@ fn encode_template_to_native_script(
     }
 }
 
+use sha2::{Digest, Sha256};
+
+type MerkleHash = Vec<u8>;
+
+#[wasm_bindgen]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema)]
+pub struct MerkleEither {
+    left: Option<MerkleHash>,
+    right: Option<MerkleHash>,
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug, Eq, PartialEq, serde::Serialize, serde::Deserialize, JsonSchema)]
+pub struct MerkleProof(Vec<MerkleEither>);
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum MTree {
+    Empty,
+    Node(MerkleHash, Box<MTree>, Box<MTree>),
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MerkleData(Vec<MerkleHash>);
+
+#[wasm_bindgen]
+impl MerkleData {
+    pub fn new(&self) -> Self {
+        Self(vec![])
+    }
+
+    pub fn add(&mut self, data: MerkleHash) {
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        self.0.push(hasher.finalize().to_vec())
+    }
+
+    pub fn add_from_hex(&mut self, data: String) {
+        let mut hasher = Sha256::new();
+        hasher.update(hex::decode(data).unwrap());
+        self.0.push(hasher.finalize().to_vec())
+    }
+
+    pub fn get(&self, index: usize) -> MerkleHash {
+        self.0[index].clone()
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+}
+
+#[wasm_bindgen]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MerkleTree(MTree);
+
+#[wasm_bindgen]
+impl MerkleTree {
+    pub fn new(&self, data: &MerkleData) -> Self {
+        Self(self.build(&data.0))
+    }
+
+    fn build(&self, hashes: &Vec<MerkleHash>) -> MTree {
+        if hashes.len() == 0 {
+            return MTree::Empty;
+        };
+        if hashes.len() == 1 {
+            return MTree::Node(
+                hashes[0].clone(),
+                Box::new(MTree::Empty),
+                Box::new(MTree::Empty),
+            );
+        }
+
+        let cutoff = hashes.len() / 2;
+        let (left, right) = (&hashes[0..cutoff], &hashes[cutoff..]);
+
+        let l_node = self.build(&left.to_vec());
+        let r_node = self.build(&right.to_vec());
+
+        let l_hash = if let MTree::Node(h, _, _) = &l_node {
+            Some(h)
+        } else {
+            None
+        };
+
+        let r_hash = if let MTree::Node(h, _, _) = &r_node {
+            Some(h)
+        } else {
+            None
+        };
+
+        if l_hash.is_none() || r_hash.is_none() {
+            return MTree::Empty;
+        }
+
+        let mut hasher = Sha256::new();
+        hasher.update([l_hash.unwrap().clone(), r_hash.unwrap().clone()].concat());
+
+        MTree::Node(
+            hasher.finalize().to_vec(),
+            Box::new(l_node),
+            Box::new(r_node),
+        )
+    }
+
+    pub fn size(&self) -> usize {
+        fn helper(mr: &MTree) -> usize {
+            match mr {
+                MTree::Empty => 0,
+                MTree::Node(_, l, r) => 1 + helper(l) + helper(r),
+            }
+        }
+        helper(&self.0)
+    }
+
+    pub fn root_hash(&self) -> Result<MerkleHash, JsError> {
+        match &self.0 {
+            MTree::Empty => Err(JsError::from_str("Merkle tree is empty.")),
+            MTree::Node(root, _, _) => {
+                let mut hasher = Sha256::new();
+                hasher.update(root);
+                Ok(hasher.finalize().to_vec())
+            }
+        }
+    }
+
+    pub fn proof(&self, data: Vec<u8>) -> MerkleProof {
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        let root = hasher.finalize().to_vec();
+
+        fn helper(mr: &MTree, proof: &MerkleProof, root: &MerkleHash) -> Option<MerkleProof> {
+            match mr {
+                MTree::Empty => None,
+                MTree::Node(hash, left, right) => {
+                    if hash == root {
+                        return Some(proof.clone());
+                    }
+                    match &**right {
+                        MTree::Empty => (),
+                        MTree::Node(h_left, _, _) => match helper(left, proof, root) {
+                            Some(proof_new) => {
+                                return {
+                                    let mut p = proof_new.clone();
+                                    p.0.push(MerkleEither {
+                                        left: Some(h_left.to_vec()),
+                                        right: None,
+                                    });
+                                    Some(p)
+                                }
+                            }
+                            None => (),
+                        },
+                    };
+
+                    match &**left {
+                        MTree::Empty => (),
+                        MTree::Node(h_right, _, _) => match helper(right, proof, root) {
+                            Some(proof_new) => {
+                                return {
+                                    let mut p = proof_new.clone();
+                                    p.0.push(MerkleEither {
+                                        left: None,
+                                        right: Some(h_right.to_vec()),
+                                    });
+                                    Some(p)
+                                }
+                            }
+                            None => (),
+                        },
+                    };
+
+                    None
+                }
+            }
+        }
+        match helper(&self.0, &MerkleProof(vec![]), &root) {
+            None => MerkleProof(vec![]),
+            Some(res) => res,
+        }
+    }
+
+    pub fn verify(data: Vec<u8>, root: MerkleHash, proof: MerkleProof) -> bool {
+        let mut hasher = Sha256::new();
+        hasher.update(data);
+        let root1 = hasher.finalize().to_vec();
+
+        fn helper(root1: &MerkleHash, root: &MerkleHash, proof: &[MerkleEither]) -> bool {
+            match &proof[..] {
+                [] => root1 == root,
+                [MerkleEither {
+                    left: Some(l),
+                    right: None,
+                }, tail @ ..] => {
+                    let mut hasher = Sha256::new();
+                    hasher.update([l.clone(), root1.clone()].concat());
+                    helper(&hasher.finalize().to_vec(), root, tail)
+                }
+                [MerkleEither {
+                    left: None,
+                    right: Some(r),
+                }, tail @ ..] => {
+                    let mut hasher = Sha256::new();
+                    hasher.update([root1.clone(), r.clone()].concat());
+                    helper(&hasher.finalize().to_vec(), root, tail)
+                }
+                _ => false,
+            }
+        }
+        helper(&root1, &root, &proof.0)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

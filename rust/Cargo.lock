@@ -206,8 +206,7 @@ dependencies = [
 [[package]]
 name = "flat-rs"
 version = "0.0.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7cfc458c5529a33581b2c5139b03885a823c55713e6db2ff0447bff87393e097"
+source = "git+https://github.com/aiken-lang/aiken.git?rev=3aba9baba5fbb2ff6c2215775106faf94eda966a#3aba9baba5fbb2ff6c2215775106faf94eda966a"
 dependencies = [
  "anyhow",
  "thiserror",
@@ -919,8 +918,7 @@ checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 [[package]]
 name = "uplc"
 version = "0.0.27"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6be146ffe69216c807617fbdcd2cdf21a5d4a9486d5323954380f9d016bc3acf"
+source = "git+https://github.com/aiken-lang/aiken.git?rev=3aba9baba5fbb2ff6c2215775106faf94eda966a#3aba9baba5fbb2ff6c2215775106faf94eda966a"
 dependencies = [
  "anyhow",
  "cryptoxide",
