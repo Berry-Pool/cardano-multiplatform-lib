@@ -18,34 +18,38 @@ fn witness_keys_for_cert(
         CertificateEnum::StakeRegistration(_cert) => {}
         CertificateEnum::StakeDeregistration(cert) => match cert.stake_credential().kind() {
             StakeCredKind::Script => {
-                let sw = script_witness.unwrap();
                 let hash = cert.stake_credential().to_scripthash().unwrap();
-                match &sw.kind() {
-                    ScriptWitnessKind::NativeWitness => {
-                        let native_script = sw.as_native_witness().unwrap();
-                        if !tx_builder.input_types.scripts.contains(&hash) {
-                            tx_builder.add_native_script(&native_script);
-                            tx_builder.input_types.scripts.insert(hash.clone());
-                        }
-                    }
-                    ScriptWitnessKind::PlutusWitness => {
-                        let plutus_witness = sw.as_plutus_witness().unwrap();
-                        if !tx_builder.input_types.scripts.contains(&hash)
-                            && plutus_witness.script().is_some()
-                        {
-                            match plutus_witness.version() {
-                                LanguageKind::PlutusV1 => {
-                                    tx_builder.add_plutus_script(&plutus_witness.script().unwrap());
-                                }
-                                LanguageKind::PlutusV2 => {
-                                    tx_builder
-                                        .add_plutus_v2_script(&plutus_witness.script().unwrap());
-                                }
+                match &script_witness {
+                    Some(sw) => match &sw.kind() {
+                        ScriptWitnessKind::NativeWitness => {
+                            let native_script = sw.as_native_witness().unwrap();
+                            if !tx_builder.input_types.scripts.contains(&hash) {
+                                tx_builder.add_native_script(&native_script);
+                                tx_builder.input_types.scripts.insert(hash.clone());
                             }
-                            tx_builder.input_types.scripts.insert(hash.clone());
                         }
-                        tx_builder.used_plutus_scripts.insert(hash.clone());
-                    }
+                        ScriptWitnessKind::PlutusWitness => {
+                            let plutus_witness = sw.as_plutus_witness().unwrap();
+                            if !tx_builder.input_types.scripts.contains(&hash)
+                                && plutus_witness.script().is_some()
+                            {
+                                match plutus_witness.version() {
+                                    LanguageKind::PlutusV1 => {
+                                        tx_builder
+                                            .add_plutus_script(&plutus_witness.script().unwrap());
+                                    }
+                                    LanguageKind::PlutusV2 => {
+                                        tx_builder.add_plutus_v2_script(
+                                            &plutus_witness.script().unwrap(),
+                                        );
+                                    }
+                                }
+                                tx_builder.input_types.scripts.insert(hash.clone());
+                            }
+                            tx_builder.used_plutus_scripts.insert(hash.clone());
+                        }
+                    },
+                    None => (),
                 }
             }
             StakeCredKind::Key => {
@@ -57,34 +61,38 @@ fn witness_keys_for_cert(
         },
         CertificateEnum::StakeDelegation(cert) => match cert.stake_credential().kind() {
             StakeCredKind::Script => {
-                let sw = script_witness.unwrap();
                 let hash = cert.stake_credential().to_scripthash().unwrap();
-                match &sw.kind() {
-                    ScriptWitnessKind::NativeWitness => {
-                        let native_script = sw.as_native_witness().unwrap();
-                        if !tx_builder.input_types.scripts.contains(&hash) {
-                            tx_builder.add_native_script(&native_script);
-                            tx_builder.input_types.scripts.insert(hash.clone());
-                        }
-                    }
-                    ScriptWitnessKind::PlutusWitness => {
-                        let plutus_witness = sw.as_plutus_witness().unwrap();
-                        if !tx_builder.input_types.scripts.contains(&hash)
-                            && plutus_witness.script().is_some()
-                        {
-                            match plutus_witness.version() {
-                                LanguageKind::PlutusV1 => {
-                                    tx_builder.add_plutus_script(&plutus_witness.script().unwrap());
-                                }
-                                LanguageKind::PlutusV2 => {
-                                    tx_builder
-                                        .add_plutus_v2_script(&plutus_witness.script().unwrap());
-                                }
+                match &script_witness {
+                    Some(sw) => match &sw.kind() {
+                        ScriptWitnessKind::NativeWitness => {
+                            let native_script = sw.as_native_witness().unwrap();
+                            if !tx_builder.input_types.scripts.contains(&hash) {
+                                tx_builder.add_native_script(&native_script);
+                                tx_builder.input_types.scripts.insert(hash.clone());
                             }
-                            tx_builder.input_types.scripts.insert(hash.clone());
                         }
-                        tx_builder.used_plutus_scripts.insert(hash.clone());
-                    }
+                        ScriptWitnessKind::PlutusWitness => {
+                            let plutus_witness = sw.as_plutus_witness().unwrap();
+                            if !tx_builder.input_types.scripts.contains(&hash)
+                                && plutus_witness.script().is_some()
+                            {
+                                match plutus_witness.version() {
+                                    LanguageKind::PlutusV1 => {
+                                        tx_builder
+                                            .add_plutus_script(&plutus_witness.script().unwrap());
+                                    }
+                                    LanguageKind::PlutusV2 => {
+                                        tx_builder.add_plutus_v2_script(
+                                            &plutus_witness.script().unwrap(),
+                                        );
+                                    }
+                                }
+                                tx_builder.input_types.scripts.insert(hash.clone());
+                            }
+                            tx_builder.used_plutus_scripts.insert(hash.clone());
+                        }
+                    },
+                    None => (),
                 }
             }
             StakeCredKind::Key => {
@@ -1342,40 +1350,48 @@ impl TransactionBuilder {
                     .to_scripthash()
                     .unwrap()
                     .clone();
-                let sw = script_witness.unwrap();
-                match sw.kind() {
-                    ScriptWitnessKind::NativeWitness => {
-                        let native_script = sw.as_native_witness().unwrap();
-                        if !self.input_types.scripts.contains(&hash) {
-                            self.add_native_script(&native_script);
-                            self.input_types.scripts.insert(hash.clone());
-                        }
-                        None
-                    }
-                    ScriptWitnessKind::PlutusWitness => {
-                        let plutus_witness = sw.as_plutus_witness().unwrap();
-                        if !self.input_types.scripts.contains(&hash)
-                            && plutus_witness.script().is_some()
-                        {
-                            match plutus_witness.version() {
-                                LanguageKind::PlutusV1 => {
-                                    self.add_plutus_script(&plutus_witness.script().unwrap());
+                match &script_witness {
+                    Some(sw) => {
+                        match sw.kind() {
+                            ScriptWitnessKind::NativeWitness => {
+                                let native_script = sw.as_native_witness().unwrap();
+                                if !self.input_types.scripts.contains(&hash) {
+                                    self.add_native_script(&native_script);
+                                    self.input_types.scripts.insert(hash.clone());
                                 }
-                                LanguageKind::PlutusV2 => {
-                                    self.add_plutus_v2_script(&plutus_witness.script().unwrap());
-                                }
+                                None
                             }
-                            self.input_types.scripts.insert(hash.clone());
-                        }
-                        self.used_plutus_scripts.insert(hash.clone());
+                            ScriptWitnessKind::PlutusWitness => {
+                                let plutus_witness = sw.as_plutus_witness().unwrap();
+                                if !self.input_types.scripts.contains(&hash)
+                                    && plutus_witness.script().is_some()
+                                {
+                                    match plutus_witness.version() {
+                                        LanguageKind::PlutusV1 => {
+                                            self.add_plutus_script(
+                                                &plutus_witness.script().unwrap(),
+                                            );
+                                        }
+                                        LanguageKind::PlutusV2 => {
+                                            self.add_plutus_v2_script(
+                                                &plutus_witness.script().unwrap(),
+                                            );
+                                        }
+                                    }
+                                    self.input_types.scripts.insert(hash.clone());
+                                }
+                                self.used_plutus_scripts.insert(hash.clone());
 
-                        Some(Redeemer::new(
-                            &RedeemerTag::new_reward(),
-                            &to_bignum(0), // will point to correct input when finalizing txBuilder
-                            &plutus_witness.redeemer(),
-                            &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
-                        ))
+                                Some(Redeemer::new(
+                                    &RedeemerTag::new_reward(),
+                                    &to_bignum(0), // will point to correct input when finalizing txBuilder
+                                    &plutus_witness.redeemer(),
+                                    &ExUnits::new(&to_bignum(0), &to_bignum(0)), // correct ex units calculated at the end
+                                ))
+                            }
+                        }
                     }
+                    None => None,
                 }
             }
         };
