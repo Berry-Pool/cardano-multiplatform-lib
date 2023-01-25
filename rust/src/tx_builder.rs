@@ -1,7 +1,6 @@
 use itertools::Itertools;
 
 use super::fees;
-use super::output_builder::TransactionOutputAmountBuilder;
 use super::utils;
 use super::*;
 use crate::{tx_builder_utils::*, witness_builder::RedeemerWitnessKey};
@@ -993,12 +992,7 @@ impl TransactionBuilder {
             }
         }
     }
-    fn add_bootstrap_input(
-        &mut self,
-        hash: &ByronAddress,
-        utxo: &TransactionUnspentOutput,
-        amount: &Value,
-    ) {
+    fn add_bootstrap_input(&mut self, hash: &ByronAddress, utxo: &TransactionUnspentOutput) {
         if self
             .inputs
             .iter()
@@ -1096,7 +1090,7 @@ impl TransactionBuilder {
         }
         match &ByronAddress::from_address(address) {
             Some(addr) => {
-                return self.add_bootstrap_input(addr, &utxo, &utxo.output.amount);
+                return self.add_bootstrap_input(addr, &utxo);
             }
             None => (),
         }

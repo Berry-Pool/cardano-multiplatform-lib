@@ -3,10 +3,7 @@ use cbor_event::{
     de::Deserializer,
     se::{Serialize, Serializer},
 };
-use core::fmt;
 use hex::FromHex;
-use serde::de::{MapAccess, SeqAccess, Visitor};
-use serde::ser::SerializeStruct;
 use serde_json;
 use std::cmp;
 use std::{
