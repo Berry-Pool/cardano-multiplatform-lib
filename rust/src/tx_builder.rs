@@ -1172,13 +1172,14 @@ impl TransactionBuilder {
         let mut_output = &mut output.clone();
 
         let min_ada = min_ada_required(&output, &self.config.coins_per_utxo_byte)?;
-        if mut_output.amount().coin() < min_ada {
+        if mut_output.amount().coin() > to_bignum(0) && mut_output.amount().coin() < min_ada {
+            return Err(JsError::from_str(&format!(
+                "Output value {} is less than the minimum UTxO value {}",
+                from_bignum(&output.amount().coin()),
+                from_bignum(&min_ada)
+            )));
+        } else if mut_output.amount().coin() < min_ada {
             mut_output.amount.coin = min_ada;
-            // return Err(JsError::from_str(&format!(
-            //     "Value {} less than the minimum UTXO value {}",
-            //     from_bignum(&output.amount().coin()),
-            //     from_bignum(&min_ada)
-            // )));
         }
         let value_size = mut_output.amount.to_bytes().len();
         if value_size > self.config.max_value_size as usize {
@@ -2914,7 +2915,7 @@ mod tests {
                     .with_address(&addr_net_0)
                     .next()
                     .unwrap()
-                    .with_coin(&to_bignum(29))
+                    .with_coin(&to_bignum(0))
                     .build()
                     .unwrap(),
             )
@@ -3255,7 +3256,7 @@ mod tests {
                     .with_address(&addr_net_0)
                     .next()
                     .unwrap()
-                    .with_coin(&to_bignum(100))
+                    .with_coin(&to_bignum(0))
                     .build()
                     .unwrap(),
             )
@@ -3321,7 +3322,7 @@ mod tests {
                     .with_address(&addr_net_0)
                     .next()
                     .unwrap()
-                    .with_coin(&to_bignum(29))
+                    .with_coin(&to_bignum(0))
                     .build()
                     .unwrap(),
             )
@@ -3568,7 +3569,7 @@ mod tests {
         mass.insert(&policy_id, &ass);
 
         // One coin and the minted asset goes into the output
-        let mut output_amount = Value::new(&to_bignum(50));
+        let mut output_amount = Value::new(&to_bignum(0));
         output_amount.set_multiasset(&mass);
 
         tx_builder
@@ -3684,7 +3685,7 @@ mod tests {
         mass.insert(&policy_id, &ass);
 
         // One coin and the minted asset goes into the output
-        let mut output_amount = Value::new(&to_bignum(50));
+        let mut output_amount = Value::new(&to_bignum(0));
         output_amount.set_multiasset(&mass);
 
         tx_builder
@@ -3820,7 +3821,7 @@ mod tests {
         )
         .to_address();
 
-        let mut output_amount = Value::new(&to_bignum(100));
+        let mut output_amount = Value::new(&to_bignum(0));
         output_amount.set_multiasset(&multiassets[2]);
 
         tx_builder
@@ -3944,7 +3945,7 @@ mod tests {
         )
         .to_address();
 
-        let mut output_amount = Value::new(&to_bignum(50));
+        let mut output_amount = Value::new(&to_bignum(0));
         output_amount.set_multiasset(&multiassets[2]);
 
         tx_builder
@@ -4506,7 +4507,7 @@ mod tests {
         )
         .unwrap()
         .to_address();
-        let output_amount = Value::new(&to_bignum(100));
+        let output_amount = Value::new(&to_bignum(0));
 
         tx_builder
             .add_output(
@@ -4643,7 +4644,7 @@ mod tests {
         )
         .unwrap()
         .to_address();
-        let output_amount = Value::new(&to_bignum(59));
+        let output_amount = Value::new(&to_bignum(0));
 
         tx_builder
             .add_output(
@@ -5530,7 +5531,7 @@ mod tests {
         )
         .unwrap()
         .to_address();
-        let output_amount = Value::new(&to_bignum(50));
+        let output_amount = Value::new(&to_bignum(0));
 
         tx_builder
             .add_output(
