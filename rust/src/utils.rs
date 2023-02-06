@@ -12,7 +12,7 @@ use std::{
 };
 
 use super::*;
-use crate::error::{DeserializeError, DeserializeFailure};
+use crate::error::{DeserializeError, DeserializeFailure, JsError};
 
 use schemars::JsonSchema;
 
