@@ -99,6 +99,7 @@ dependencies = [
  "linked-hash-map",
  "noop_proc_macro",
  "num-bigint 0.4.3",
+ "num-integer",
  "rand",
  "rand_os",
  "schemars",
@@ -296,7 +297,7 @@ dependencies = [
 [[package]]
 name = "flat-rs"
 version = "0.0.27"
-source = "git+https://github.com/aiken-lang/aiken.git?rev=f9892434bf06be802e065177793970693d976da6#f9892434bf06be802e065177793970693d976da6"
+source = "git+https://github.com/aiken-lang/aiken.git?rev=831a37d0947944e22e1c3565a8d92dadf0e10812#831a37d0947944e22e1c3565a8d92dadf0e10812"
 dependencies = [
  "anyhow",
  "thiserror",
@@ -535,9 +536,9 @@ dependencies = [
 
 [[package]]
 name = "num-integer"
-version = "0.1.44"
+version = "0.1.45"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d2cc698a63b549a70bc047073d2949cce27cd1c7b0a4a862d08a8031bc2801db"
+checksum = "225d3389fb3509a24c93f5c29eb6bde2586b98d9f016636dff58d7c6f7569cd9"
 dependencies = [
  "autocfg",
  "num-traits",
@@ -1028,7 +1029,7 @@ checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
 [[package]]
 name = "uplc"
 version = "0.0.28"
-source = "git+https://github.com/aiken-lang/aiken.git?rev=f9892434bf06be802e065177793970693d976da6#f9892434bf06be802e065177793970693d976da6"
+source = "git+https://github.com/aiken-lang/aiken.git?rev=831a37d0947944e22e1c3565a8d92dadf0e10812#831a37d0947944e22e1c3565a8d92dadf0e10812"
 dependencies = [
  "anyhow",
  "cryptoxide",
@@ -1037,6 +1038,9 @@ dependencies = [
  "indexmap",
  "itertools",
  "k256",
+ "num-bigint 0.4.3",
+ "num-integer",
+ "num-traits",
  "pallas-addresses",
  "pallas-codec",
  "pallas-crypto",
