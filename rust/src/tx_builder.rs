@@ -947,10 +947,7 @@ impl TransactionBuilder {
             match &sw.kind() {
                 ScriptWitnessKind::NativeWitness => {
                     let native_script = sw.as_native_witness().unwrap();
-                    if !self.input_types.scripts.contains(hash) {
-                        self.add_native_script(&native_script);
-                        self.input_types.scripts.insert(hash.clone());
-                    }
+                    self.add_native_script(&native_script);
 
                     self.inputs.push(TxBuilderInput {
                         utxo: utxo.clone(),
@@ -959,8 +956,7 @@ impl TransactionBuilder {
                 }
                 ScriptWitnessKind::PlutusWitness => {
                     let plutus_witness = sw.as_plutus_witness().unwrap();
-                    if !self.input_types.scripts.contains(hash) && plutus_witness.script().is_some()
-                    {
+                    if plutus_witness.script().is_some() {
                         match plutus_witness.version() {
                             LanguageKind::PlutusV1 => {
                                 self.add_plutus_script(&plutus_witness.script().unwrap());
@@ -969,7 +965,6 @@ impl TransactionBuilder {
                                 self.add_plutus_v2_script(&plutus_witness.script().unwrap());
                             }
                         }
-                        self.input_types.scripts.insert(hash.clone());
                     }
 
                     self.used_plutus_scripts.insert(hash.clone());
@@ -1215,13 +1210,18 @@ impl TransactionBuilder {
             let scripts = PlutusScripts::new();
             self.plutus_scripts = Some(scripts);
         }
-        let mut scripts = self.plutus_scripts.clone().unwrap();
-        scripts.add(&plutus_script);
-        self.plutus_scripts = Some(scripts);
 
         let script_hash = plutus_script.hash(ScriptHashNamespace::PlutusV1);
-        self.plutus_versions
-            .insert(script_hash, Language::new_plutus_v1());
+
+        if !self.input_types.scripts.contains(&script_hash) {
+            let mut scripts = self.plutus_scripts.clone().unwrap();
+            scripts.add(&plutus_script);
+            self.plutus_scripts = Some(scripts);
+
+            self.plutus_versions
+                .insert(script_hash.clone(), Language::new_plutus_v1());
+            self.input_types.scripts.insert(script_hash);
+        }
     }
 
     /// Add plutus v2 scripts via a PlutusScripts object
@@ -1230,13 +1230,18 @@ impl TransactionBuilder {
             let scripts = PlutusScripts::new();
             self.plutus_v2_scripts = Some(scripts);
         }
-        let mut scripts = self.plutus_v2_scripts.clone().unwrap();
-        scripts.add(&plutus_script);
-        self.plutus_v2_scripts = Some(scripts);
 
         let script_hash = plutus_script.hash(ScriptHashNamespace::PlutusV2);
-        self.plutus_versions
-            .insert(script_hash, Language::new_plutus_v2());
+
+        if !self.input_types.scripts.contains(&script_hash) {
+            let mut scripts = self.plutus_v2_scripts.clone().unwrap();
+            scripts.add(&plutus_script);
+            self.plutus_v2_scripts = Some(scripts);
+
+            self.plutus_versions
+                .insert(script_hash.clone(), Language::new_plutus_v2());
+            self.input_types.scripts.insert(script_hash);
+        }
     }
 
     /// Add plutus data via a PlutusData object
@@ -1255,9 +1260,15 @@ impl TransactionBuilder {
             let scripts = NativeScripts::new();
             self.native_scripts = Some(scripts);
         }
-        let mut scripts = self.native_scripts.clone().unwrap();
-        scripts.add(native_script);
-        self.native_scripts = Some(scripts);
+
+        let script_hash = native_script.hash(ScriptHashNamespace::NativeScript);
+
+        if !self.input_types.scripts.contains(&script_hash) {
+            let mut scripts = self.native_scripts.clone().unwrap();
+            scripts.add(native_script);
+            self.native_scripts = Some(scripts);
+            self.input_types.scripts.insert(script_hash);
+        }
     }
 
     /// Add certificate via a Certificates object
@@ -1286,7 +1297,7 @@ impl TransactionBuilder {
 
         cert_array.push(TxBuilderCert {
             certificate: certificate.clone(),
-            redeemer: redeemer,
+            redeemer,
         });
         self.certs = Some(cert_array.clone());
 
@@ -1344,17 +1355,12 @@ impl TransactionBuilder {
                         match sw.kind() {
                             ScriptWitnessKind::NativeWitness => {
                                 let native_script = sw.as_native_witness().unwrap();
-                                if !self.input_types.scripts.contains(&hash) {
-                                    self.add_native_script(&native_script);
-                                    self.input_types.scripts.insert(hash.clone());
-                                }
+                                self.add_native_script(&native_script);
                                 None
                             }
                             ScriptWitnessKind::PlutusWitness => {
                                 let plutus_witness = sw.as_plutus_witness().unwrap();
-                                if !self.input_types.scripts.contains(&hash)
-                                    && plutus_witness.script().is_some()
-                                {
+                                if plutus_witness.script().is_some() {
                                     match plutus_witness.version() {
                                         LanguageKind::PlutusV1 => {
                                             self.add_plutus_script(
@@ -1367,7 +1373,6 @@ impl TransactionBuilder {
                                             );
                                         }
                                     }
-                                    self.input_types.scripts.insert(hash.clone());
                                 }
                                 self.used_plutus_scripts.insert(hash.clone());
 
@@ -1390,7 +1395,7 @@ impl TransactionBuilder {
         withdrawal_array.push(TxBuilderWithdrawal {
             reward_address: reward_address.clone(),
             coin: coin.clone(),
-            redeemer: redeemer,
+            redeemer,
         });
         self.withdrawals = Some(withdrawal_array.clone());
     }
@@ -1487,17 +1492,12 @@ impl TransactionBuilder {
             Some(sw) => match sw.kind() {
                 ScriptWitnessKind::NativeWitness => {
                     let native_script = sw.as_native_witness().unwrap();
-                    if !self.input_types.scripts.contains(&policy_id) {
-                        self.add_native_script(&native_script);
-                        self.input_types.scripts.insert(policy_id.clone());
-                    }
+                    self.add_native_script(&native_script);
                     None
                 }
                 ScriptWitnessKind::PlutusWitness => {
                     let plutus_witness = sw.as_plutus_witness().unwrap();
-                    if !self.input_types.scripts.contains(&policy_id)
-                        && plutus_witness.script().is_some()
-                    {
+                    if plutus_witness.script().is_some() {
                         match plutus_witness.version() {
                             LanguageKind::PlutusV1 => {
                                 self.add_plutus_script(&plutus_witness.script().unwrap());
@@ -1506,8 +1506,6 @@ impl TransactionBuilder {
                                 self.add_plutus_v2_script(&plutus_witness.script().unwrap());
                             }
                         }
-
-                        self.input_types.scripts.insert(policy_id.clone());
                     }
                     self.used_plutus_scripts.insert(policy_id.clone());
 
@@ -1530,16 +1528,20 @@ impl TransactionBuilder {
 
         match index {
             Some(i) => {
-                mint_array[i]
-                    .mint_assets
-                    .0
-                    .append(&mut mint_assets.0.clone());
+                for (asset_name, quantity) in &mint_assets.0 {
+                    mint_array[i]
+                        .mint_assets
+                        .0
+                        .entry(asset_name.clone())
+                        .and_modify(|q| *q = Int(q.0 + quantity.0))
+                        .or_insert(quantity.clone());
+                }
             }
             None => {
                 mint_array.push(TxBuilderMint {
                     policy_id: policy_id.clone(),
                     mint_assets: mint_assets.clone(),
-                    redeemer: redeemer,
+                    redeemer,
                 });
             }
         }
