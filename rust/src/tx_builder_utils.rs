@@ -121,6 +121,7 @@ pub fn get_ex_units(
         initial_budget,
         sc,
         false,
+        |_| (),
     );
 
     match result {
