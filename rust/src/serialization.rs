@@ -2089,7 +2089,7 @@ impl Deserialize for DNSRecordSRV {
     }
 }
 
-impl cbor_event::se::Serialize for URL {
+impl cbor_event::se::Serialize for Url {
     fn serialize<'se, W: Write>(
         &self,
         serializer: &'se mut Serializer<W>,
@@ -2098,7 +2098,7 @@ impl cbor_event::se::Serialize for URL {
     }
 }
 
-impl Deserialize for URL {
+impl Deserialize for Url {
     fn deserialize<R: BufRead + Seek>(raw: &mut Deserializer<R>) -> Result<Self, DeserializeError> {
         Self::new_impl(raw.text()?)
     }
@@ -2517,7 +2517,7 @@ impl DeserializeEmbeddedGroup for PoolMetadata {
         raw: &mut Deserializer<R>,
         _: cbor_event::Len,
     ) -> Result<Self, DeserializeError> {
-        let url = (|| -> Result<_, DeserializeError> { Ok(URL::deserialize(raw)?) })()
+        let url = (|| -> Result<_, DeserializeError> { Ok(Url::deserialize(raw)?) })()
             .map_err(|e| e.annotate("url"))?;
         let pool_metadata_hash =
             (|| -> Result<_, DeserializeError> { Ok(PoolMetadataHash::deserialize(raw)?) })()

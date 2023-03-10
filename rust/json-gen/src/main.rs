@@ -54,7 +54,7 @@ fn main() {
     gen_json_schema!(MIREnum);
     gen_json_schema!(Ipv4);
     gen_json_schema!(Ipv6);
-    gen_json_schema!(URL);
+    gen_json_schema!(Url);
     gen_json_schema!(DNSRecordAorAAAA);
     gen_json_schema!(DNSRecordSRV);
     gen_json_schema!(SingleHostAddr);

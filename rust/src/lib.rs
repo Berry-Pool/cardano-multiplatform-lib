@@ -28,13 +28,13 @@ use wasm_bindgen::prelude::{wasm_bindgen, JsValue};
 // This file was code-generated using an experimental CDDL to rust tool:
 // https://github.com/Emurgo/cddl-codegen
 
+use cbor_event::Special as CBORSpecial;
 use cbor_event::Type as CBORType;
 use cbor_event::{
     self,
     de::Deserializer,
     se::{Serialize, Serializer},
 };
-use cbor_event::{se, Special as CBORSpecial};
 
 pub mod address;
 pub mod chain_core;
@@ -1287,17 +1287,17 @@ static URL_MAX_LEN: usize = 64;
 #[derive(
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
-pub struct URL(String);
+pub struct Url(String);
 
-to_from_bytes!(URL);
+to_from_bytes!(Url);
 
 #[wasm_bindgen]
-impl URL {
-    pub fn new(url: String) -> Result<URL, JsError> {
+impl Url {
+    pub fn new(url: String) -> Result<Url, JsError> {
         Self::new_impl(url).map_err(|e| JsError::from_str(&e.to_string()))
     }
 
-    pub(crate) fn new_impl(url: String) -> Result<URL, DeserializeError> {
+    pub(crate) fn new_impl(url: String) -> Result<Url, DeserializeError> {
         if url.len() <= URL_MAX_LEN {
             Ok(Self(url))
         } else {
@@ -1556,7 +1556,7 @@ impl Relay {
     Clone, Debug, Eq, Ord, PartialEq, PartialOrd, serde::Serialize, serde::Deserialize, JsonSchema,
 )]
 pub struct PoolMetadata {
-    url: URL,
+    url: Url,
     pool_metadata_hash: PoolMetadataHash,
 }
 
@@ -1566,7 +1566,7 @@ to_from_json!(PoolMetadata);
 
 #[wasm_bindgen]
 impl PoolMetadata {
-    pub fn url(&self) -> URL {
+    pub fn url(&self) -> Url {
         self.url.clone()
     }
 
@@ -1574,7 +1574,7 @@ impl PoolMetadata {
         self.pool_metadata_hash.clone()
     }
 
-    pub fn new(url: &URL, pool_metadata_hash: &PoolMetadataHash) -> Self {
+    pub fn new(url: &Url, pool_metadata_hash: &PoolMetadataHash) -> Self {
         Self {
             url: url.clone(),
             pool_metadata_hash: pool_metadata_hash.clone(),
