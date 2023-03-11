@@ -1,0 +1,2 @@
+printf '%s\n%s\n' "const require = typeof window === 'undefined' ? await (async () => {const { createRequire } = await import('module'); return createRequire(import.meta.url);})() : null;" "$(cat ./rust/pkg/cardano_multiplatform_lib.js)" > ./rust/pkg/cardano_multiplatform_lib.js
+printf '%s\n%s\n' "// dnt-shim-ignore"  "$(cat ./rust/pkg/cardano_multiplatform_lib.js)" > ./rust/pkg/cardano_multiplatform_lib.js
