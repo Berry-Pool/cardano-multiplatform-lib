@@ -1,3 +1,4 @@
+use fraction::ToPrimitive;
 use itertools::Itertools;
 
 use super::fees;
@@ -519,6 +520,7 @@ impl TransactionBuilder {
         &mut self,
         inputs: &TransactionUnspentOutputs,
         change_address: &Address,
+        weights: &[u32], // default: [200, 1000, 1500, 800, 800, 5000]
     ) -> Result<(), JsError> {
         let coins_per_utxo_byte = self.config.coins_per_utxo_byte.clone();
 
@@ -621,21 +623,42 @@ impl TransactionBuilder {
                 available_coin || assets_relevant
             };
 
-        let norm_vector = |vector: &Vec<u64>| -> Vec<f64> {
-            let length = vector
+        let norm = |vector: &Vec<i128>| -> f64 {
+            vector
                 .iter()
-                .fold(0.0, |acc, coord| acc + coord.pow(2) as f64)
-                .sqrt();
-
-            vector.iter().map(|coord| *coord as f64 / length).collect()
+                .fold(num_bigint::BigUint::from(0u64), |acc, coord| {
+                    acc + num_bigint::BigInt::from(*coord)
+                        .pow(2)
+                        .to_biguint()
+                        .unwrap()
+                })
+                .sqrt()
+                .to_f64()
+                .unwrap()
         };
 
-        let distance_vectors = |vector1: &Vec<f64>, vector2: &Vec<f64>| -> f64 {
+        let sub_vectors = |vector1: &Vec<u64>, vector2: &Vec<u64>| -> Vec<i128> {
             vector1
                 .iter()
                 .zip(vector2.iter())
-                .fold(0.0, |acc, (x, y)| acc + (x - y).powi(2))
-                .sqrt()
+                .map(|(x, y)| *x as i128 - *y as i128)
+                .collect()
+        };
+
+        let get_normalization = |vector1: &Vec<u64>, vector2: &Vec<u64>| -> f64 {
+            (vector1
+                .iter()
+                .fold(num_bigint::BigUint::from(0_u64), |acc, x| {
+                    acc + num_bigint::BigUint::from(*x).pow(2)
+                })
+                * vector2
+                    .iter()
+                    .fold(num_bigint::BigUint::from(0_u64), |acc, x| {
+                        acc + num_bigint::BigUint::from(*x).pow(2)
+                    }))
+            .sqrt()
+            .to_f64()
+            .unwrap()
         };
 
         /*
@@ -700,9 +723,9 @@ impl TransactionBuilder {
             let weight_ideal = if current_ideal > 0.0 {
                 current_ideal * 0.0
             } else if inputs.len() > 100 {
-                -current_ideal * 200.0
+                -current_ideal * weights[0] as f64
             } else {
-                -current_ideal * 1000.0
+                -current_ideal * weights[1] as f64
             };
 
             /* Normalize the asset length through the max possible asset length */
@@ -714,20 +737,20 @@ impl TransactionBuilder {
 
             let weight_assets = if is_plutus {
                 /* Assets are expensive for Plutus scripts => penalize harder if more assets are in inputs */
-                asset_len * 1500.0
+                asset_len * weights[2] as f64
             } else {
                 /* Penalize more assets a bit, but try to find the ideal quantity in order to avoid asset fractions over time. */
-                let norm_current_vector = norm_vector(&current_vector);
-                let norm_ideal_vector = norm_vector(&ideal_vector);
 
-                let distance = distance_vectors(&norm_current_vector, &norm_ideal_vector);
+                let distance = norm(&sub_vectors(&current_vector, &ideal_vector));
+                let normalization = get_normalization(&current_vector, &ideal_vector);
+                let norm_distance = distance / normalization;
 
-                asset_len * 800.0 + distance * 800.0
+                asset_len * weights[3] as f64 + norm_distance * weights[4] as f64
             };
 
             /* If the UTxO set is getting quite large we start to take the UTxO count into consideration. */
             let weight_utxos = if inputs.len() > 100 && available.0 > 0 {
-                (inputs.len() as f64 / available.0 as f64) * 5000.0
+                (inputs.len() as f64 / available.0 as f64) * weights[5] as f64
             } else {
                 0.0
             };
@@ -1936,6 +1959,12 @@ impl TransactionBuilder {
 
                 /* We set change_total.coin here as amount to make sure we can don't exceed the max val size by a few bytes */
                 let mut change_output = TransactionOutput {
+                    format: if datum.is_some() && datum.as_ref().unwrap().kind() == DatumKind::Data
+                    {
+                        1
+                    } else {
+                        0
+                    },
                     address: change_address.clone(),
                     amount: Value::new(&change_total.coin).clone(),
                     datum: datum.clone(),
@@ -2416,20 +2445,20 @@ impl TransactionBuilder {
                 && collateral_return.amount.coin >= new_total_col
                 && collateral_return.amount.multiasset.is_none()
             {
-                self.total_collateral = Some(collateral_return.amount.coin.clone());
+                new_total_col = collateral_return.amount.coin.clone();
+                self.total_collateral = Some(new_total_col);
                 self.collateral_return = None;
-                return Ok(collateral_return.amount.coin);
+            } else {
+                if collateral_return.amount.coin
+                    < min_ada_required(&collateral_return, &self.config.coins_per_utxo_byte)?
+                {
+                    return Err(JsError::from_str("Not enough ADA leftover to cover fees"));
+                }
+
+                self.total_collateral = Some(new_total_col.clone());
+
+                self.collateral_return = Some(collateral_return.clone());
             }
-
-            if collateral_return.amount.coin
-                < min_ada_required(&collateral_return, &self.config.coins_per_utxo_byte)?
-            {
-                return Err(JsError::from_str("Not enough ADA leftover to cover fees"));
-            }
-
-            self.total_collateral = Some(new_total_col.clone());
-
-            self.collateral_return = Some(collateral_return.clone());
 
             old_total_col = new_total_col.clone();
             new_total_col = self
@@ -2891,7 +2920,9 @@ mod tests {
         //     ))
         //     .unwrap();
 
-        tx_builder.add_inputs_from(&utxos, &addr_net_0).unwrap();
+        tx_builder
+            .add_inputs_from(&utxos, &addr_net_0, &[200, 1000, 1500, 800, 800, 5000])
+            .unwrap();
         tx_builder.balance(&addr_net_0, None).unwrap();
 
         let tx = tx_builder.build_tx().unwrap();
@@ -4744,7 +4775,11 @@ mod tests {
         .unwrap()
         .to_address();
         tx_builder
-            .add_inputs_from(&available_inputs, &change_addr)
+            .add_inputs_from(
+                &available_inputs,
+                &change_addr,
+                &[200, 1000, 1500, 800, 800, 5000],
+            )
             .unwrap();
         tx_builder.balance(&change_addr, None).unwrap();
         let tx = tx_builder.build().unwrap();
@@ -4790,7 +4825,11 @@ mod tests {
         .unwrap()
         .to_address();
         tx_builder
-            .add_inputs_from(&available_inputs, &change_addr)
+            .add_inputs_from(
+                &available_inputs,
+                &change_addr,
+                &[200, 1000, 1500, 800, 800, 5000],
+            )
             .unwrap();
         tx_builder.balance(&change_addr, None).unwrap();
         let tx = tx_builder.build().unwrap();
@@ -4885,7 +4924,11 @@ mod tests {
         .unwrap()
         .to_address();
         tx_builder
-            .add_inputs_from(&available_inputs, &change_addr)
+            .add_inputs_from(
+                &available_inputs,
+                &change_addr,
+                &[200, 1000, 1500, 800, 800, 5000],
+            )
             .unwrap();
         tx_builder.balance(&change_addr, None).unwrap();
         let tx = tx_builder.build().unwrap();
@@ -5004,7 +5047,11 @@ mod tests {
         .unwrap()
         .to_address();
         tx_builder
-            .add_inputs_from(&available_inputs, &change_addr)
+            .add_inputs_from(
+                &available_inputs,
+                &change_addr,
+                &[200, 1000, 1500, 800, 800, 5000],
+            )
             .unwrap();
         tx_builder.balance(&change_addr, None).unwrap();
         let tx = tx_builder.build().unwrap();
@@ -5049,7 +5096,11 @@ mod tests {
         )
         .unwrap()
         .to_address();
-        let add_inputs_res = tx_builder.add_inputs_from(&available_inputs, &change_addr);
+        let add_inputs_res = tx_builder.add_inputs_from(
+            &available_inputs,
+            &change_addr,
+            &[200, 1000, 1500, 800, 800, 5000],
+        );
         assert!(add_inputs_res.is_ok(), "{:?}", add_inputs_res.err());
         tx_builder.balance(&change_addr, None).unwrap();
         let tx_build_res = tx_builder.build();
@@ -5123,6 +5174,7 @@ mod tests {
             &available_inputs,
             &Address::from_bech32("addr1vyy6nhfyks7wdu3dudslys37v252w2nwhv0fw2nfawemmnqs6l44z")
                 .unwrap(),
+            &[200, 1000, 1500, 800, 800, 5000],
         );
         assert!(add_inputs_res.is_ok(), "{:?}", add_inputs_res.err());
     }
@@ -5172,7 +5224,11 @@ mod tests {
         )
         .unwrap()
         .to_address();
-        let add_inputs_res = tx_builder.add_inputs_from(&available_inputs, &change_addr);
+        let add_inputs_res = tx_builder.add_inputs_from(
+            &available_inputs,
+            &change_addr,
+            &[200, 1000, 1500, 800, 800, 5000],
+        );
         assert!(add_inputs_res.is_ok(), "{:?}", add_inputs_res.err());
         assert_eq!(tx_builder.min_fee().unwrap(), to_bignum(264));
         tx_builder.balance(&change_addr, None);
